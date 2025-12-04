@@ -12,6 +12,8 @@ export default defineConfig({
       main: "./index.tsx",
       animation: './sub-menu/animation.tsx',
       css: './sub-menu/css.tsx',
+      flatten: './sub-menu/flatten.tsx',
+      "flatten-disabled": './sub-menu/flatten-disabled.tsx',
       layout: './sub-menu/layout.tsx',
       list: './sub-menu/list.tsx',
       scrollview: './sub-menu/scrollview.tsx',

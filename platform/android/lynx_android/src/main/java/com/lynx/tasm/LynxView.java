@@ -1471,6 +1471,7 @@ public class LynxView extends UIBodyView {
     return null;
   }
 
+  // jj, 
   @Override
   protected void dispatchDraw(Canvas canvas) {
     onTraceEventBegin(TraceEventDef.LYNX_VIEW_ON_DRAW, new Callable<HashMap<String, String>>() {

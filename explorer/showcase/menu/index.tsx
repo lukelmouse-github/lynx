@@ -45,6 +45,16 @@ const ITEMS: ItemProps[] = [
     url: 'file://lynx?local://showcase/fetch/main.lynx.bundle',
   },
   {
+    title: 'View Flattening (Enabled)',
+    description: '✅ Demo with view flattening enabled. All elements are drawn directly on Canvas.',
+    url: 'file://lynx?local://showcase/menu/flatten.lynx.bundle',
+  },
+  {
+    title: 'View Flattening (Disabled)',
+    description: '❌ Demo with view flattening disabled. Each element creates a separate Android View.',
+    url: 'file://lynx?local://showcase/menu/flatten-disabled.lynx.bundle',
+  },
+  {
     title: 'Image',
     description: 'An example for image component.',
     url: 'file://lynx?local://showcase/image/main.lynx.bundle',

@@ -491,10 +491,8 @@ static bool ToXAppRegionType(std::string_view str, int& result) {
 }
 
 using starlight::XAnimationColorInterpolationType;
-static bool ToXAnimationColorInterpolationType(std::string_view str,
-                                               int& result) {
-  XAnimationColorInterpolationType type =
-      XAnimationColorInterpolationType::kAuto;
+static bool ToXAnimationColorInterpolationType(std::string_view str, int& result) {
+  XAnimationColorInterpolationType type = XAnimationColorInterpolationType::kAuto;
   if (str == "auto") {
     type = XAnimationColorInterpolationType::kAuto;
   } else if (str == "sRGB") {
