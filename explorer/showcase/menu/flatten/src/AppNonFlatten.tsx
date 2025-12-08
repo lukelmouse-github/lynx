@@ -21,15 +21,8 @@ const SAMPLE_IMAGE_PURPLE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
  */
 export const AppNonFlatten = () => {
   return (
-    <scroll-view
-      scroll-orientation="vertical"
-      style={{
-        width: "100%",
-        height: "100%",
-        backgroundColor: "#fff",
-      }}
-    >
       <view
+        flatten={false}
         style={{
           width: "100%",
           display: "flex",
@@ -40,6 +33,7 @@ export const AppNonFlatten = () => {
         }}
       >
         <text
+        flatten={false}
           style={{
             fontSize: "24px",
             fontWeight: "bold",
@@ -51,6 +45,7 @@ export const AppNonFlatten = () => {
         </text>
 
         <text
+        flatten={false} 
           style={{
             fontSize: "14px",
             marginBottom: "20px",
@@ -130,6 +125,7 @@ export const AppNonFlatten = () => {
 
         {/* 说明信息 */}
         <view
+        flatten={false} 
           style={{
             marginTop: "20px",
             padding: "12px",
@@ -140,6 +136,7 @@ export const AppNonFlatten = () => {
           }}
         >
           <text
+          flatten={false} 
             style={{
               fontSize: "12px",
               color: "#d32f2f",
@@ -152,6 +149,5 @@ export const AppNonFlatten = () => {
           </text>
         </view>
       </view>
-    </scroll-view>
   );
 };

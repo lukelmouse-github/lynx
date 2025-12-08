@@ -16,6 +16,8 @@ import android.text.Spanned;
 import android.text.TextUtils;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
+import com.lynx.base.log.ALog;
 import com.lynx.react.bridge.Dynamic;
 import com.lynx.react.bridge.ReadableArray;
 import com.lynx.tasm.base.LLog;

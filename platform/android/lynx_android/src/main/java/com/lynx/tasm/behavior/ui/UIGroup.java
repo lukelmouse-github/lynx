@@ -14,6 +14,8 @@ import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.ViewGroup;
 import androidx.annotation.Nullable;
+
+import com.lynx.base.log.ALog;
 import com.lynx.tasm.base.LLog;
 import com.lynx.tasm.behavior.LynxContext;
 import com.lynx.tasm.behavior.event.EventTarget;
@@ -398,10 +400,14 @@ public abstract class UIGroup<T extends ViewGroup>
     }
   }
 
+  // 1. Android 系统调用 dispatchDraw，UIGroup 通过钩子介入
   @Override
   public void afterDispatchDraw(final Canvas canvas) {
     LynxBaseUI ui;
+    // 2. 关键点：这里是一个 while/for 循环，而不是递归！
+    // mCurrentDrawUI 是一个链表的头节点
     for (ui = mCurrentDrawUI; ui != null; ui = ui.mNextDrawUI) {
+      // 3. 如果节点是 Flatten (自绘) 的，就由 UIGroup 亲自把它画出来
       if (ui.isFlatten() && !(ui instanceof UIShadowProxy)) {
         drawChild((LynxFlattenUI) ui, canvas);
       }
@@ -479,12 +485,14 @@ public abstract class UIGroup<T extends ViewGroup>
     measureChildren();
   }
 
+  // 4. 真正执行绘制的方法  上一步是:afterDispatchDraw
   protected void drawChild(LynxFlattenUI child, Canvas canvas) {
     Rect bound = child.getBound();
     canvas.save();
     if (bound != null) {
-      canvas.clipRect(bound);
+      canvas.clipRect(bound); // 处理裁剪
     }
+    // 5. 调用 FlattenUI 自己的绘制逻辑
     child.innerDraw(canvas);
     canvas.restore();
   }

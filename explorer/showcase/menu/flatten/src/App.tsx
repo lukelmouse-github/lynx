@@ -21,15 +21,7 @@ const SAMPLE_IMAGE_PURPLE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
  */
 export const App = () => {
   return (
-    <scroll-view
-      scroll-orientation="vertical"
-      style={{
-        width: "100%",
-        height: "100%",
-        backgroundColor: "#fff",
-      }}
-    >
-      <view
+    <view
         style={{
           width: "100%",
           display: "flex",
@@ -136,6 +128,5 @@ export const App = () => {
           </text>
         </view>
       </view>
-    </scroll-view>
   );
 };

@@ -17,6 +17,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.UiThread;
+
+import com.google.gson.Gson;
+import com.lynx.base.log.ALog;
+import com.lynx.base.log.LynxLog;
 import com.lynx.react.bridge.Callback;
 import com.lynx.react.bridge.ReadableArray;
 import com.lynx.react.bridge.ReadableMap;
@@ -86,6 +90,8 @@ public class LynxUIOwner {
   private final List<ForegroundListener> mForegroundListeners;
   private final HashMap<Integer, LynxBaseUI> mUIHolder;
   private final HashMap<Integer, LynxBaseUI> mTextChildUIHolder;
+  
+  private static Gson gson = new Gson();
 
   // Hold the UI that exec the boundingClientRect method in the layout process. Call the UI's
   // uiOwnerDidPerformLayout method after exec performLayout.
@@ -1644,6 +1650,7 @@ public class LynxUIOwner {
       }
       if (flatten && behavior.supportUIFlatten()) {
         ui = behavior.createFlattenUIWithParams(mContext, params);
+        ALog.d(tag + "sign: " + ui.getSign() +" create flatten ui with params: " + gson.toJson(params));
       }
       if (ui == null) {
         ui = behavior.createUIWithParams(mContext, params);

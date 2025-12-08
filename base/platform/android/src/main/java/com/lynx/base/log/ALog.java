@@ -1,7 +1,6 @@
-package com.example.common.log;
+package com.lynx.base.log;
 
 import android.annotation.SuppressLint;
-import android.app.Application;
 import android.text.TextUtils;
 import android.util.Log;
 

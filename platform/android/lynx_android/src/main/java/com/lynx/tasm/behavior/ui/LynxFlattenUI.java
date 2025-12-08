@@ -81,7 +81,7 @@ public class LynxFlattenUI extends LynxBaseUI {
                && (("view").equals(getTagName()) || ("component").equals(getTagName())))
         ? StyleConstants.OVERFLOW_VISIBLE
         : StyleConstants.OVERFLOW_HIDDEN;
-  }
+  } 
 
   @Override
   public void measure() {
@@ -90,11 +90,12 @@ public class LynxFlattenUI extends LynxBaseUI {
     }
   }
 
+  // x, y 是父节点传下来的绝对坐标起点
   public void layout(int x, int y, Rect bounds) {
     // set child's drawing x,y and bounds
     Rect childBounds = null;
     updateDrawingLayoutInfo(x, y, bounds);
-
+    
     childBounds = new Rect(getLeft(), getTop(), getLeft() + getWidth(), getTop() + getHeight());
     final int overflow = getOverflow();
     final boolean isOverflowX = (overflow & OVERFLOW_X) != 0;
@@ -136,13 +137,18 @@ public class LynxFlattenUI extends LynxBaseUI {
       }
     }
 
+    // 遍历子节点
     for (LynxBaseUI child : mChildren) {
+      // 1. 累加偏移量：父节点绝对位置 + 子节点相对偏移
       int childX = x + child.getOriginLeft();
       int childY = y + child.getOriginTop();
       if (!child.isFlatten()) {
+        // 如果是原生 View，让它自己处理
         child.updateDrawingLayoutInfo(childX, childY, childBounds);
         ((LynxUI) child).layout();
       } else if (child.isFlatten()) {
+        // 2. 递归调用！
+        // 将计算好的绝对坐标 childX, childY 传给子节点
         // LynxFlattenUI should calculate the real (x,y) and bounds.
         ((LynxFlattenUI) child).layout(childX, childY, childBounds);
       }
@@ -239,6 +245,7 @@ public class LynxFlattenUI extends LynxBaseUI {
   }
 
   protected void updateRenderNode(RenderNodeCompat renderNode) {
+    // ... 计算宽高 ...
     int w = getWidth();
     int h = getHeight();
     int left = getLeft();
@@ -255,11 +262,19 @@ public class LynxFlattenUI extends LynxBaseUI {
       h = bottom - top;
     }
     renderNode.setPosition(left, top, right, bottom);
+    // 1. 开始录制，拿到画布
+    // 这里的 renderCanvas 不是一个普通的用于直接画像素的 Canvas（比如 BitmapCanvas）
+    // 而是一个特殊的 RecordingCanvas（在 Android 源码中对应 android.graphics.RecordingCanvas 或旧版的 DisplayListCanvas）。
+    // 当你调用 renderCanvas.drawRect(...) 时，并没有任何像素被画到屏幕或内存图片上。
+    // 相反，这个 drawRect 方法内部做的事情类似于：
     Canvas renderCanvas = renderNode.beginRecording(w, h);
     try {
+      // 2. 在画布上画画 (调用 draw 方法)
+      // 注意这里有个 translate，是为了抵消父容器的偏移，让内容画在 RenderNode 自己的 (0,0) 坐标系内
       renderCanvas.translate(-left, -top);
       draw(renderCanvas);
     } finally {
+      // 3. 结束录制，生成 DisplayList
       renderNode.endRecording(renderCanvas);
     }
   }
@@ -287,22 +302,29 @@ public class LynxFlattenUI extends LynxBaseUI {
       TraceEvent.endSection(TraceEventDef.FLATTEN_UI_DRAW);
       return;
     }
+    // 1. 获取布局位置
     final int left = getLeft();
     final int top = getTop();
 
+    // 2. 保存画布状态
     int count = canvas.save();
 
+    // 3. 坐标系平移！这是自绘的关键
+    // 因为没有 View 帮你做坐标转换，必须自己把 Canvas 移动到正确的位置
     if ((left | top) != 0) {
       // fit drawing position
       canvas.translate(left, top);
     }
 
+    // 4. 处理透明度 (Alpha)
     if (mAlpha < 1.0f) {
       canvas.saveLayerAlpha(
           0, 0, getWidth(), getHeight(), (int) (mAlpha * 255), Canvas.ALL_SAVE_FLAG);
     }
 
+    // 5. 执行真正的绘制 (画背景、边框等)
     onDraw(canvas);
+    // 6. 恢复画布
     canvas.restoreToCount(count);
 
     TraceEvent.endSection(TraceEventDef.FLATTEN_UI_DRAW);
