@@ -1,5 +1,5 @@
 import { root } from "@lynx-js/react";
 
-import { App } from "./App";
+import { AppViewFlatten } from "./AppViewFlatten";
 
-root.render(<App />);
+root.render(<AppViewFlatten />);

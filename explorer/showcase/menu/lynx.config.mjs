@@ -13,6 +13,8 @@ export default defineConfig({
       animation: './sub-menu/animation.tsx',
       css: './sub-menu/css.tsx',
       flatten: './sub-menu/flatten.tsx',
+      "flatten-view": './sub-menu/flatten-view.tsx',
+      "flatten-view-text": './sub-menu/flatten-view-text.tsx',
       "flatten-disabled": './sub-menu/flatten-disabled.tsx',
       layout: './sub-menu/layout.tsx',
       list: './sub-menu/list.tsx',

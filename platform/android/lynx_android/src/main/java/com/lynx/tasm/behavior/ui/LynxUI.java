@@ -132,6 +132,7 @@ public abstract class LynxUI<T extends View> extends LynxBaseUI implements IProc
   }
 
   // List that contains all UIs should draw during dispatchDraw
+  // 双向链表头指针.
   protected LynxBaseUI mDrawHead = null;
 
   public void setDrawHead(LynxBaseUI ui) {
@@ -144,8 +145,15 @@ public abstract class LynxUI<T extends View> extends LynxBaseUI implements IProc
 
   @RestrictTo(RestrictTo.Scope.LIBRARY)
   public void insertDrawList(LynxBaseUI pre, LynxBaseUI child) {
+    // 设置绘制父节点
     child.setDrawParent(this);
+    /**
+     * 这是一个标准的双向链表插入操作，但有几个关键点：
+     * child.setDrawParent(this)：建立绘制父子关系，拍平UI通过这个关系找到绘制链表
+     * 双向指针维护：mPreviousDrawUI 和 mNextDrawUI 构成双向链表
+     */
     if (pre == null) {
+      // 插入到链表头部
       // index == 0 && parent is not flatten
       // insert to the start of the list and be the new head.
       if (mDrawHead != null) {
@@ -154,6 +162,7 @@ public abstract class LynxUI<T extends View> extends LynxBaseUI implements IProc
       }
       mDrawHead = child;
     } else {
+      // 插入到pre节点之后
       // Insert child after mark, mark is child's precursor found in function insertIntoDrawList
       LynxBaseUI next = pre.mNextDrawUI;
       if (next != null) {

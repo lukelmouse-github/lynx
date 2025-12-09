@@ -915,19 +915,63 @@ public class LynxUIOwner {
     }
   }
 
+
+  /**
+   * @param parent 在UI树中的逻辑父节点
+   * @param child 要插入的子节点（可能是拍平或非拍平）
+   * @param index 在父节点 children 列表中的位置索引
+   *              
+   * 将 child 插入到绘制链表中，确保绘制顺序与DOM顺序一致，同时正确处理拍平UI与非拍平UI的混合场景。
+   */
   private void insertIntoDrawList(LynxBaseUI parent, LynxBaseUI child, int index) {
     // set child.mNextDrawUI to null to prevent infinite loop in UIGroup.afterDispatchDraw.
+    // 防止循环引用.
     child.setNextDrawUI(null);
 
     // Only LynxUI can have a draw list.
+    /**
+     * 找到真正的绘制父节点
+     * 绘制父节点（draw parent）：实际拥有绘制链表的节点。只有 LynxUI（非拍平）才能拥有绘制链表。
+     * 拍平父节点的特殊情况：
+     *      如果 parent 是拍平UI，它没有自己的绘制链表，需要找到它所属的最近的非拍平祖先（通过 getDrawParent()）。
+     *      
+     * 例子:
+     *    DOM树：UIBody（非拍平） → view（拍平） → text（拍平）
+     *    绘制链表：UIBody 拥有链表，view和text都链接在UIBody的链表中
+     */
     LynxBaseUI realParent = parent.isFlatten() ? parent.getDrawParent() : parent;
     if (realParent == null) {
       return;
     }
+
+
     if (index == 0) {
       // index is 0, child is the head or child's precursor is its flatten parent.
+      /**
+       * // TODO 补充画图.
+       * 处理索引为0的情况（插入到链表头部）
+       * index == 0 表示 child 是父节点的第一个子节点。
+       * parent.isFlatten() ? parent : null：如果父节点是拍平的，那么 child 的前驱就是其拍平父节点本身；否则前驱为 null（插入到链表头部）。
+       * 调用 LynxUI.insertDrawList() 执行实际的链表插入。
+       */
       ((LynxUI) realParent).insertDrawList(parent.isFlatten() ? parent : null, child);
     } else {
+      /**
+       * // TODO 补充画图.
+       * 处理索引非0的情况（找到正确的前驱节点）
+       * 这是最复杂的逻辑，需要理解 "右兄弟子树中最右侧的非拍平节点" 概念。
+       * 
+       * 算法步骤：
+       * 1. 获取前一个兄弟节点：pre = parent.getChildAt(index - 1)
+       * 2. 递归查找最右侧非拍平节点：
+       *    如果 pre 是拍平UI且有自己的子节点
+       *    则继续取 pre 的最后一个子节点：pre.getChildAt(pre.getChildren().size() - 1)
+       *    循环直到找到非拍平节点或没有子节点的拍平节点
+       *    
+       * 为什么这样设计？ 因为拍平UI的子节点也拍平到同一个绘制链表中，所以：
+       * 一个拍平UI的最后一个子节点，在绘制顺序上紧邻下一个兄弟节点
+       * 需要找到这个"边界"节点作为新节点的前驱
+       */
       // find precursor in the drawList. Should be the first non-flatten right most UI in brother
       // node's sub UI tree.
       LynxBaseUI pre = parent.getChildAt(index - 1);
@@ -937,11 +981,27 @@ public class LynxUIOwner {
       ((LynxUI) realParent).insertDrawList(pre, child);
     }
 
+
+    /**
+     * 非拍平子节点的View插入
+     * 如果 child 是非拍平UI（即 LynxUI），且父节点已经调用了 insertView，则将其Android View添加到View树中。
+     */
     if ((!child.isFlatten()) && ((UIGroup) realParent).isInsertViewCalled()) {
       // Some customized view will handle the insertion of view itself
       // when insertChild for UI tree(e.g x-swiper).
       ((UIGroup) realParent).insertView((LynxUI) child);
     }
+
+    ALog.d("DRAW_LIST",
+      "parent=" + parent.getTagName() + "[" + parent.getSign() + "]" +
+        " parent_flatten=" + parent.isFlatten() +  // 父节点拍平状态
+        " child=" + child.getTagName() + "[" + child.getSign() + "]" +
+        " child_flatten=" + child.isFlatten() +    // 子节点拍平状态 ✅ 重要！
+        " index=" + index +
+        " realParent=" + (realParent != null ? realParent.getTagName() : "null") +
+        " pre_calculated=" + (index == 0 ?
+        (parent.isFlatten() ? parent.getTagName() : "null") :
+        (index > 0 ? parent.getChildAt(index-1).getTagName() : "null")));
   }
 
   public void remove(int parentTag, int childTag) {
@@ -1650,7 +1710,6 @@ public class LynxUIOwner {
       }
       if (flatten && behavior.supportUIFlatten()) {
         ui = behavior.createFlattenUIWithParams(mContext, params);
-        ALog.d(tag + "sign: " + ui.getSign() +" create flatten ui with params: " + gson.toJson(params));
       }
       if (ui == null) {
         ui = behavior.createUIWithParams(mContext, params);

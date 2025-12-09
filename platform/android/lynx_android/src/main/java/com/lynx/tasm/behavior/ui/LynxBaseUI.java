@@ -119,7 +119,9 @@ public abstract class LynxBaseUI
           PropsConstants.BORDER_RADIUS));
 
   // used for drawList
+  // 双向链表的前驱指针
   protected LynxBaseUI mPreviousDrawUI = null;
+  // 双向链表的后继指针
   protected LynxBaseUI mNextDrawUI = null;
   protected float mTranslationZ = 0;
 
