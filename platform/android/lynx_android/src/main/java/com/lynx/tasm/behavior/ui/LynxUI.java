@@ -149,6 +149,7 @@ public abstract class LynxUI<T extends View> extends LynxBaseUI implements IProc
     child.setDrawParent(this);
     /**
      * 这是一个标准的双向链表插入操作，但有几个关键点：
+     
      * child.setDrawParent(this)：建立绘制父子关系，拍平UI通过这个关系找到绘制链表
      * 双向指针维护：mPreviousDrawUI 和 mNextDrawUI 构成双向链表
      */

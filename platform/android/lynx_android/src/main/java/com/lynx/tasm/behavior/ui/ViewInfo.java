@@ -25,6 +25,17 @@ import java.util.ArrayList;
 // rendering metadata (e.g., layout coordinates, clipping boundaries). After decoupling the
 // Platform View from LynxUI (the cross-platform UI abstraction layer), ViewInfo acts as a
 // platform-agnostic data layer to coordinate drawing operations.
+
+/**
+ *   ViewInfo是Lynx跨平台抽象层的关键组件，它：
+ *   1. 存储渲染元数据（布局、裁剪、边界等）
+ *   2. 管理子绘制信息（SubDrawInfo数组）
+ *   3. 提供独立绘制能力
+ *   4. 支持UI状态的缓存和恢复
+ *   5. 实现平台无关的绘制接口
+ *   
+ *   不用管他.
+ */
 public class ViewInfo implements IDrawChildHook {
   public ViewInfo(IProcessViewInfoHook hook, View view) {
     mProcessHook = hook;

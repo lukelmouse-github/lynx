@@ -13,6 +13,7 @@ import static com.lynx.tasm.behavior.ui.accessibility.LynxAccessibilityMutationH
 import android.graphics.Rect;
 import android.os.Build;
 import android.text.TextUtils;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
@@ -20,7 +21,6 @@ import androidx.annotation.UiThread;
 
 import com.google.gson.Gson;
 import com.lynx.base.log.ALog;
-import com.lynx.base.log.LynxLog;
 import com.lynx.react.bridge.Callback;
 import com.lynx.react.bridge.ReadableArray;
 import com.lynx.react.bridge.ReadableMap;
@@ -34,6 +34,7 @@ import com.lynx.tasm.NativeFacade;
 import com.lynx.tasm.TemplateBundle;
 import com.lynx.tasm.animation.keyframe.KeyframeManager;
 import com.lynx.tasm.animation.transition.TransitionAnimationManager;
+import com.lynx.tasm.base.DrawListOperation;
 import com.lynx.tasm.base.LLog;
 import com.lynx.tasm.base.TraceEvent;
 import com.lynx.tasm.base.trace.TraceEventDef;
@@ -64,6 +65,7 @@ import com.lynx.tasm.performance.fsp.MeaningfulContentSnapshot;
 import com.lynx.tasm.performance.memory.MemoryRecord;
 import com.lynx.tasm.utils.LynxConstants;
 import com.lynx.tasm.utils.UIThreadUtils;
+
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -433,22 +435,50 @@ public class LynxUIOwner {
     }
   }
 
+  /**
+   * 它的核心作用是：当子节点的 translationZ 值发生变化时，确保其父节点能够按 Z 轴顺序正确绘制子节点。
+   * 
+   * 2. 为什么需要把拍平变成非拍平？
+   *    这是 Lynx 框架为了 解决 "拍平优化" 与 "Z 轴排序" 的兼容性问题 而设计的：
+   * 拍平（Flatten）的限制：
+   *    拍平UI（LynxFlattenUI）将多个子节点合并到同一个绘制层级中
+   *    所有拍平的子节点共享同一个 Canvas 绘制上下文
+   *    无法在运行时动态调整子节点的绘制顺序
+   * translateZ 的要求：
+   *    translationZ 属性决定了视图的 Z 轴高度（垂直方向）
+   *    Android 系统按 Z 轴从低到高顺序绘制视图
+   *    如果多个子节点有不同的 translationZ 值，必须能够按 Z 轴值排序后绘制
+   * 核心矛盾：
+   *    拍平优化（减少绘制调用） ↔ Z 轴排序（需要独立绘制层级）
+   *    当检测到子节点的 translationZ 发生变化时，Lynx 选择优先保证 Z 轴排序的正确性，因此将拍平父节点转换为非拍平父节点。
+   * @param childTag
+   * @param parentTag
+   */
   private void checkTranslateZ(int childTag, int parentTag) {
+    // 1. 检查是否启用了 translateZ 排序功能
     if (!mContext.getEnableFlattenTranslateZ()) {
       return;
     }
+    // 2. 获取子节点
     LynxBaseUI child = mUIHolder.get(childTag);
     if (child == null) {
       return;
     }
+    // 3. 检测子节点的 translationZ 是否发生变化
     if (child.getTranslationZ() != child.getLastTranslateZ()) {
+      // 4. 获取父节点
       LynxBaseUI parent = mUIHolder.get(parentTag);
+      // 5. 关键逻辑：如果父节点是拍平状态，将其转换为非拍平
       if (parent != null && parent.isFlatten()) {
+        // 将拍平父节点转为非拍平
         newUpdateFlatten(parentTag, false);
       }
+      // 6. 重新获取父节点（因为可能已被替换）
       parent = mUIHolder.get(parentTag);
+      // 7. 标记该父节点需要按 translationZ 排序子节点
       mTranslateZParentHolder.add(parent);
       parent.setNeedSortChildren(true);
+      // 8. 更新子节点的 lastTranslateZ 记录
       child.setLastTranslateZ(child.getTranslationZ());
     }
   }
@@ -769,12 +799,30 @@ public class LynxUIOwner {
     newUpdateFlatten(tag, flatten);
   }
 
+  /**
+   * TODO jiangjia 看看这里是如何转换的?? 一般什么情况下需要转换?
+   * 这个方法是 "原地替换" 父节点实例的完整流程
+   * 
+   * 这种设计体现了 Lynx 框架的 "渐进增强" 思想：
+   * 默认使用拍平：最大化性能优化
+   *    按需转换：当检测到 Z 轴排序需求时，自动转换为非拍平
+   *    无缝切换：通过 mUIHolder 替换实例，对上层透明
+   * 这也是为什么在 checkTranslateZ 中需要 重新获取父节点 的原因——因为调用 newUpdateFlatten 后，mUIHolder 中的映射已经指向了全新的对象实例。
+   * @param tag
+   * @param flatten
+   */
   private void newUpdateFlatten(int tag, boolean flatten) {
+    /**
+     * 步骤 1：准备替换环境
+     */
+    // 获取旧的拍平父节点
     LynxBaseUI oldUI = mUIHolder.get(tag);
     if (oldUI == null) {
       return;
     }
     LynxBaseUI parent = oldUI.getParentBaseUI();
+
+    // 保存旧节点的所有状态
     StylesDiffMap props = new StylesDiffMap(oldUI.getProps());
     // get all children of the oldUI.
     List<LynxBaseUI> tempChildren = new ArrayList<>(oldUI.getChildren());
@@ -785,13 +833,17 @@ public class LynxUIOwner {
     }
     int index = 0;
 
-    // remove from parent
+
+    /**
+     * 步骤 2：从树中移除旧节点
+     */
+    // 从父节点中移除旧节点
     if (parent != null) {
       // remove old ui from parent
       index = parent.getIndex(oldUI);
       // If old UI flatten, it will remove all UIs which are flatten to its parent.
-      removeFromDrawList(oldUI);
-      parent.removeChild(oldUI);
+      removeFromDrawList(oldUI); // 从绘制链表中移除
+      parent.removeChild(oldUI); // 从 UI 树中移除
     }
 
     // LynxFlattenUI will do this part when remove itself from drawList.
@@ -806,15 +858,26 @@ public class LynxUIOwner {
       LynxBaseUI mChild = oldUI.getChildAt(i);
       oldUI.removeChild(mChild);
     }
+
+    /**
+     * 步骤 3：创建新的非拍平节点
+     */
+    // 创建新的非拍平 UI 实例（flatten = false）
     LynxBaseUI newUI = createUI(oldUI.getTagName(), flatten);
 
     // apply before setSign
+    // 继承旧节点的标识符
     oldUI.applyUIPaintStylesToTarget(newUI);
 
+    // 应用旧节点的样式
     newUI.setSign(oldUI.getSign(), oldUI.getTagName());
 
     // Restore the Style
     consumeInitialProps(newUI, props);
+    /**
+     * 步骤 4：关键替换操作
+     * ⭐⭐⭐ 核心替换：在 mUIHolder 中替换实例 ⭐⭐⭐
+     */
     mUIHolder.put(oldUI.getSign(), newUI);
 
     if (mTranslateZParentHolder.contains(oldUI)) {
@@ -823,11 +886,15 @@ public class LynxUIOwner {
     }
 
     // Restore the tree structure
+    /**
+     * 步骤 5：重建树结构
+     */
     if (parent != null) {
-      parent.insertChild(newUI, index);
+      parent.insertChild(newUI, index); // 将新节点重新插入到原来的位置
       insertIntoDrawList(parent, newUI, index);
     }
     int childIndex = 0;
+    // 重新插入所有子节点
     for (LynxBaseUI child : tempChildren) {
       // Insert all children in UI tree.
       // If newUI is flatten, child drawingLayoutInfo will be re-computed during layout. If newUI is
@@ -848,6 +915,7 @@ public class LynxUIOwner {
       ((UIGroup) newUI).layoutChildren();
     }
     newUI.invalidate();
+    // 销毁旧节点
     oldUI.destroy();
     if (TraceEvent.isTracingStarted()) {
       TraceEvent.endSection(traceEvent);
@@ -878,8 +946,33 @@ public class LynxUIOwner {
     newInsert(parentTag, childTag, index);
   }
 
+
+  /**
+   * C++层调用插入,最终调到这里.
+   * 目的: 将已创建的 UI 节点插入到 UI 树和绘制链表
+   *  UI 树（父子关系树）
+   *  绘制链表（mDrawHead 开头的双向链表，用于决定绘制顺序）
+   * @param parentTag
+   * @param childTag
+   * @param index
+   * 
+   * 关键设计要点
+   * 拍平（Flatten）处理
+   *    如果父节点是 LynxUI（非拍平），子节点可以直接插入其绘制链表。
+   *    如果父节点是 LynxFlattenUI（拍平），则需要找到最近的祖先非拍平节点作为绘制链表的实际所有者（realParent）。
+   *    拍平UI的子节点不会独立拥有绘制链表，它们会拍平到祖先非拍平节点的同一个链表中。
+   * 绘制链表插入算法（在 insertIntoDrawList 中）
+   *    索引为 0：插入到链表头部（如果父节点是拍平UI，则前驱是父节点本身）。
+   *    索引非 0：需要找到前一个兄弟节点所在子树的最右侧非拍平节点作为前驱，以保证 DOM 顺序与绘制顺序一致。
+   * TranslateZ 排序
+   *    如果子节点设置了 translateZ 属性，会触发父节点可能从拍平转为非拍平，并标记需要按 translateZ 重新排序子节点。
+   * 视图树与绘制链表同步
+   *    插入操作同时维护了 UI 树（用于布局、事件传递）和绘制链表（用于按正确顺序绘制）。
+   *    非拍平子节点还会被添加到 Android 原生的 ViewGroup 中（通过 ((UIGroup) realParent).insertView）。
+   */
   private void newInsert(int parentTag, int childTag, int index) {
     if (mUIHolder.size() > 0) {
+      // 1. 从 mUIHolder 中获取父节点和子节点实例
       LynxBaseUI parent = mUIHolder.get(parentTag);
       if (parent == null) {
         throw new RuntimeException(
@@ -890,27 +983,71 @@ public class LynxUIOwner {
         throw new RuntimeException(
             "Insertion (new) failed due to unknown child signature: " + childTag);
       }
+      // 2. 检查 translateZ 属性是否需要更新（可能触发父节点从拍平转为非拍平）
+      // TODO 什么情况下会造成z轴的更新？是父节点还是子节点？，这种退化普遍吗？对性能有什么影响？
       checkTranslateZ(childTag, parentTag);
+      // 重新获取，因为 checkTranslateZ 可能改变父节点
       parent = mUIHolder.get(parentTag);
 
+      // 3. 如果父节点不能拥有拍平子节点，但子节点是拍平UI，则强制将子节点转为非拍平
+      // TODO 什么情况下，父节点不能拥有拍平子节点？？，举例子。
       if (!parent.canHaveFlattenChild() && child.isFlatten()) {
         newUpdateFlatten(childTag, false);
         child = mUIHolder.get(childTag);
       }
+      // 4. 处理 index == -1 的情况（表示追加到末尾）
       if (index == -1) { // If the index is equal to -1 should add to the last
         index = parent.getChildren().size();
       }
+      // 5. 将子节点插入父节点的 children 列表（更新 UI 树）
       parent.insertChild(child, index);
+      // 6. 将子节点插入绘制链表（更新绘制顺序）
       insertIntoDrawList(parent, child, index);
+      // 7. 如果子节点是拍平UI，增加父节点的拍平子节点计数
       if (child.isFlatten()) {
         parent.flattenChildrenCountIncrement();
       }
       // when moveNode should recursively insert children of flattenUI into drawingList
+      // 8. 如果子节点是拍平UI，需要递归将其所有子孙节点也插入绘制链表
       if (child.isFlatten()) {
         insertChildIntoDrawListRecursive(child);
+        /**
+         * 为什么要触发每个子节点的布局和绘制呢?
+         * ## 2. 为什么需要调用这两个方法？
+         *
+         * ### 2.1 标记渲染节点为“脏”（`mIsValidate = false`）
+         * 拍平UI使用 **`RenderNodeCompat`**（硬件加速绘制节点）来录制其所有子节点的绘制命令。当拍平节点的子节点被插入/移除时：
+         * - **需要重新录制**：`RenderNodeCompat` 必须重新录制（re-record）所有绘制操作，以包含新的子节点。
+         * - **性能优化**：`mIsValidate` 标志用于避免不必要的重复录制。只有当它为 `false` 时，才会在下次绘制时重新录制。
+         *
+         * **如果不调用**：`mIsValidate` 保持 `true`，拍平节点不会重新录制绘制命令，新插入的子节点将 **不会显示**。
+         *
+         * ### 2.2 向绘制父节点冒泡
+         * 拍平节点本身没有独立的 Android `View`，它被绘制在其 **绘制父节点**（`mDrawParent`，即最近的祖先非拍平节点）的 `Canvas` 上。
+         * - **布局冒泡**：当拍平节点的子树结构变化时，可能影响其在父节点中的布局位置，需要父节点重新计算布局。
+         * - **绘制冒泡**：拍平节点的绘制区域可能失效，需要父节点重绘该区域。
+         *
+         * **如果不调用**：绘制父节点不知道子节点已变化，可能导致：
+         * - 布局位置计算错误
+         * - 绘制区域不更新（部分区域残留旧内容）
+         *
+         * ## 3. 为什么只对 `child`（拍平父节点）调用，而不是每个子孙节点？
+         *
+         * `insertChildIntoDrawListRecursive(child)` 已经递归地将所有子孙节点插入到绘制链表中。对 **拍平父节点** 调用 `requestLayout()` 和 `invalidate()` 会产生以下连锁反应：
+         * 
+         * ## 4. 如果不调用会产生什么影响？
+         *
+         * | 问题 | 直接原因 | 后果 |
+         * |------|----------|------|
+         * | **新节点不显示** | `mIsValidate` 保持 `true`，`RenderNodeCompat` 不重新录制 | 用户看不到新插入的子节点 |
+         * | **布局错位** | 绘制父节点未重新计算布局 | 节点出现在错误的位置 |
+         * | **残留旧内容** | 绘制区域未失效，Android 不重绘 | 屏幕上残留被移除节点的内容 |
+         * | **触摸事件错乱** | 布局位置与实际绘制位置不一致 | 点击位置与响应位置不匹配 |
+         */
         child.requestLayout();
         child.invalidate();
       }
+      // 9. 触发无障碍（Accessibility）事件，通知系统 UI 结构变化
       insertA11yMutationEvent(MUTATION_ACTION_INSERT, child);
     }
   }
@@ -921,7 +1058,23 @@ public class LynxUIOwner {
    * @param child 要插入的子节点（可能是拍平或非拍平）
    * @param index 在父节点 children 列表中的位置索引
    *              
-   * 将 child 插入到绘制链表中，确保绘制顺序与DOM顺序一致，同时正确处理拍平UI与非拍平UI的混合场景。
+   * 将 child 插入到绘制链表中，确保绘制顺序与DOM绘制顺序一致，同时正确处理拍平UI与非拍平UI的混合场景。
+   * 
+   * DOM绘制顺序是个dfs.
+   * 如果是纯NativeView的组合(没有FlattenView). 那么如果把他的DOM结构转换成链表的结构呢? ---> 直接正常的DFS递归即可.写出来就行.
+   *               同时,如何在插入的过程中,动态的更新这个链表的结构呢? --->  (这个问题的答案,就是目前的insertIntoDrawList)
+   *               可以逐步画图,然后观察这个构建的过程,会自然的发现,每次给某个A节点插入他的child节点时,从DFS序上看,肯定会在A的最后一个右孩子后面插入.(画图理解)
+   *                        --- 再深入思考, 我们会发现,如果直接用单链表做这种插入的话,每次都需要重新找上一个节点(这个过程可以被双向链表直接替代), 
+   *                                            所以最终插入算法就是一个很自然的双向链表插入, 且最终的链表遍历是一个DFS序,跟DOM结构一模一样.
+   *                                          
+   *              动态构建完成这个绘制的双向链表之后, 需要思考这个链表遍历的过程,也就是draw的过程. -- 本质上这个过程不需要思考真实View和虚拟View之间的关系.
+   *              
+   *              因为遇到了什么问题,才需要  (只能在真实View上挂载虚拟View的结论? --> 两套绘制系统的结合!) --> 两套渲染系统的结合,就是在Android系统渲染上加hook操作即可.
+   *              
+   *              接着,进一步思考, 如何让NativeView的系统渲染流程跟FlattenView的渲染流程相结合呢? ---> 链表的draw过程.                              
+   *                                                                   
+   *               
+   *               
    */
   private void insertIntoDrawList(LynxBaseUI parent, LynxBaseUI child, int index) {
     // set child.mNextDrawUI to null to prevent infinite loop in UIGroup.afterDispatchDraw.
@@ -929,16 +1082,6 @@ public class LynxUIOwner {
     child.setNextDrawUI(null);
 
     // Only LynxUI can have a draw list.
-    /**
-     * 找到真正的绘制父节点
-     * 绘制父节点（draw parent）：实际拥有绘制链表的节点。只有 LynxUI（非拍平）才能拥有绘制链表。
-     * 拍平父节点的特殊情况：
-     *      如果 parent 是拍平UI，它没有自己的绘制链表，需要找到它所属的最近的非拍平祖先（通过 getDrawParent()）。
-     *      
-     * 例子:
-     *    DOM树：UIBody（非拍平） → view（拍平） → text（拍平）
-     *    绘制链表：UIBody 拥有链表，view和text都链接在UIBody的链表中
-     */
     LynxBaseUI realParent = parent.isFlatten() ? parent.getDrawParent() : parent;
     if (realParent == null) {
       return;
@@ -947,31 +1090,8 @@ public class LynxUIOwner {
 
     if (index == 0) {
       // index is 0, child is the head or child's precursor is its flatten parent.
-      /**
-       * // TODO 补充画图.
-       * 处理索引为0的情况（插入到链表头部）
-       * index == 0 表示 child 是父节点的第一个子节点。
-       * parent.isFlatten() ? parent : null：如果父节点是拍平的，那么 child 的前驱就是其拍平父节点本身；否则前驱为 null（插入到链表头部）。
-       * 调用 LynxUI.insertDrawList() 执行实际的链表插入。
-       */
       ((LynxUI) realParent).insertDrawList(parent.isFlatten() ? parent : null, child);
     } else {
-      /**
-       * // TODO 补充画图.
-       * 处理索引非0的情况（找到正确的前驱节点）
-       * 这是最复杂的逻辑，需要理解 "右兄弟子树中最右侧的非拍平节点" 概念。
-       * 
-       * 算法步骤：
-       * 1. 获取前一个兄弟节点：pre = parent.getChildAt(index - 1)
-       * 2. 递归查找最右侧非拍平节点：
-       *    如果 pre 是拍平UI且有自己的子节点
-       *    则继续取 pre 的最后一个子节点：pre.getChildAt(pre.getChildren().size() - 1)
-       *    循环直到找到非拍平节点或没有子节点的拍平节点
-       *    
-       * 为什么这样设计？ 因为拍平UI的子节点也拍平到同一个绘制链表中，所以：
-       * 一个拍平UI的最后一个子节点，在绘制顺序上紧邻下一个兄弟节点
-       * 需要找到这个"边界"节点作为新节点的前驱
-       */
       // find precursor in the drawList. Should be the first non-flatten right most UI in brother
       // node's sub UI tree.
       LynxBaseUI pre = parent.getChildAt(index - 1);
@@ -980,34 +1100,39 @@ public class LynxUIOwner {
       }
       ((LynxUI) realParent).insertDrawList(pre, child);
     }
-
-
-    /**
-     * 非拍平子节点的View插入
-     * 如果 child 是非拍平UI（即 LynxUI），且父节点已经调用了 insertView，则将其Android View添加到View树中。
-     */
+    
     if ((!child.isFlatten()) && ((UIGroup) realParent).isInsertViewCalled()) {
       // Some customized view will handle the insertion of view itself
       // when insertChild for UI tree(e.g x-swiper).
       ((UIGroup) realParent).insertView((LynxUI) child);
     }
 
-    ALog.d("DRAW_LIST",
-      "parent=" + parent.getTagName() + "[" + parent.getSign() + "]" +
-        " parent_flatten=" + parent.isFlatten() +  // 父节点拍平状态
-        " child=" + child.getTagName() + "[" + child.getSign() + "]" +
-        " child_flatten=" + child.isFlatten() +    // 子节点拍平状态 ✅ 重要！
-        " index=" + index +
-        " realParent=" + (realParent != null ? realParent.getTagName() : "null") +
-        " pre_calculated=" + (index == 0 ?
-        (parent.isFlatten() ? parent.getTagName() : "null") :
-        (index > 0 ? parent.getChildAt(index-1).getTagName() : "null")));
+    // JSON日志输出，便于解析
+    DrawListOperation op = DrawListOperation.forInsert(
+        parent.getTagName(),
+        parent.getSign(),
+        index,
+        child.getTagName(),
+        child.getSign(),
+        child.getClass().getSimpleName());
+    ALog.d("insertIntoDrawList", op.toJson());
+    
+    printDebugDrawList();
+  }
+
+  public void printDebugDrawList() {
+    
   }
 
   public void remove(int parentTag, int childTag) {
     newRemove(parentTag, childTag);
   }
 
+  /**
+   * todo jiangjia,看看这个方法
+   * @param parentTag
+   * @param childTag
+   */
   private void newRemove(int parentTag, int childTag) {
     if (mUIHolder.size() > 0) {
       LynxBaseUI child = mUIHolder.get(childTag);
@@ -1045,6 +1170,15 @@ public class LynxUIOwner {
     if (drawParent == null || parent == null) {
       return;
     }
+
+    // JSON日志输出，便于解析
+    DrawListOperation op = DrawListOperation.forRemove(
+        parent.getTagName(),
+        parent.getSign(),
+        child.getTagName(),
+        child.getSign(),
+        child.getClass().getSimpleName());
+    ALog.d("DRAW_JSON", op.toJson());
 
     // Child is not a flatten view. Only need to remove itself
     if (!child.isFlatten()) {

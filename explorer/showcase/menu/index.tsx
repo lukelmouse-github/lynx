@@ -50,11 +50,6 @@ const ITEMS: ItemProps[] = [
     url: 'file://lynx?local://showcase/menu/flatten.lynx.bundle',
   },
   {
-    title: 'View Flattening (Pure View)',
-    description: '✅ Simple nested views demo. Shows how nested views are flattened into a single draw call.',
-    url: 'file://lynx?local://showcase/menu/flatten-view.lynx.bundle',
-  },
-  {
     title: 'View Flattening (View + Text)',
     description: '✅ Simple view and text demo. Shows how view and text are flattened into a single draw call.',
     url: 'file://lynx?local://showcase/menu/flatten-view-text.lynx.bundle',

@@ -163,13 +163,30 @@ public abstract class LynxBaseUI
 
   protected LynxContext mContext;
   protected Object mParam;
+  /**
+   * 父节点引用（指向逻辑父节点）
+   */
   protected UIParent mParent;
 
   // UI whose drawList contains this.
+  /**
+   * 绘制父节点（指向拥有绘制链表的父节点）
+   */
   protected UIParent mDrawParent;
 
   protected boolean mIsTransformNode = false;
 
+  /**
+   * 每个LynxBaseUI 都自己维护着一棵 DOM 树的结构，并且会保存所有的子节点。
+   * 这是一个 ArrayList<LynxBaseUI>，用于存储该节点的所有直接子节点。无论该节点是：
+   *    LynxUI（非拍平，有独立 Android View）
+   *    LynxFlattenUI（拍平，无独立 View）
+   *    FlattenUIText（拍平文本节点）
+   * 都继承了这个 mChildren 字段，因此都具备维护子节点树的能力。
+   * 
+   * 通过 insertChild 和 removeChild 管理
+   * 
+   */
   protected final List<LynxBaseUI> mChildren = new ArrayList<>();
   protected LynxBackground mLynxBackground;
 

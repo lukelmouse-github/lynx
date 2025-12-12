@@ -118,8 +118,71 @@ export const AppNonFlatten = () => {
                 borderRadius: "5px",
                 marginRight: "10px",
               }}
+              
             />
             <text style={{ fontSize: "14px", color: "#3498db" }}>蓝色矩形</text>
+                    <view
+          // @ts-ignore
+          flatten={false}
+          style={{
+            width: "90%",
+            backgroundColor: "white",
+            borderRadius: "10px",
+            padding: "15px",
+            border: "2px solid #f44336",
+          }}
+        >
+          {/* 元素1: 文本 */}
+          <view 
+            // @ts-ignore
+            flatten={false}
+            style={{ display: "flex", flexDirection: "row", alignItems: "center", marginBottom: "12px" }}
+          >
+            <text style={{ fontSize: "12px", color: "#999", width: "30px" }}>①</text>
+            <text style={{ fontSize: "16px", color: "#e74c3c", flex: 1 }}>
+              文本节点
+            </text>
+          </view>
+
+          {/* 元素2: 绿色圆形图片 */}
+          <view 
+            // @ts-ignore
+            flatten={false}
+            style={{ display: "flex", flexDirection: "row", alignItems: "center", marginBottom: "12px" }}
+          >
+            <text style={{ fontSize: "12px", color: "#999", width: "30px" }}>②</text>
+            <image
+              src={SAMPLE_IMAGE_GREEN}
+              style={{
+                width: "40px",
+                height: "40px",
+                marginRight: "10px",
+              }}
+            />
+            <text style={{ fontSize: "14px", color: "#27ae60" }}>绿色圆形</text>
+          </view>
+
+          {/* 元素3: 蓝色矩形View */}
+          <view 
+            // @ts-ignore
+            flatten={false}
+            style={{ display: "flex", flexDirection: "row", alignItems: "center", marginBottom: "12px" }}
+          >
+            <text style={{ fontSize: "12px", color: "#999", width: "30px" }}>③</text>
+            <view
+              // @ts-ignore
+              flatten={false}
+              style={{
+                width: "60px",
+                height: "30px",
+                backgroundColor: "#3498db",
+                borderRadius: "5px",
+                marginRight: "10px",
+              }}
+            />
+            <text style={{ fontSize: "14px", color: "#3498db" }}>蓝色矩形</text>
+          </view>
+        </view>
           </view>
         </view>
 

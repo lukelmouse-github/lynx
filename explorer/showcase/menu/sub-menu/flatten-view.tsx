@@ -3,7 +3,19 @@
 // LICENSE file in the root directory of this source tree.
 
 import { root } from '@lynx-js/react';
-import { AppViewFlatten } from '../flatten/src/AppViewFlatten';
 
-// 直接渲染demo，不显示菜单
-root.render(<AppViewFlatten />);
+// Placeholder for the removed AppViewFlatten demo
+root.render(
+  <view
+    style={{
+      width: "100%",
+      height: "100%",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "#f0f0f0",
+    }}
+  >
+    <text style={{ fontSize: "18px", color: "#333" }}>AppViewFlatten demo removed.</text>
+  </view>
+);

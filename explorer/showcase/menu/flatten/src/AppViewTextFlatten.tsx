@@ -30,12 +30,26 @@ export const AppViewTextFlatten = () => {
         backgroundColor: "#f0f0f0",
       }}
     >
+
+
+      <text
+        flatten={false}
+        style={{
+          backgroundColor: "#e0e0e0",
+          fontSize: "18px",
+          color: "black",
+          fontWeight: "bold",
+        }}
+      >
+        1-没拍平
+      </text>
+
       {/* 父 View (Flatten): 蓝色背景 */}
       <view
+        flatten={false}
         style={{
           width: "200px",
-          height: "100px",
-          backgroundColor: "#3498db",
+          backgroundColor: "#e74c3c", // Changed to red
           justifyContent: "center",
           alignItems: "center",
           display: "flex",
@@ -43,21 +57,49 @@ export const AppViewTextFlatten = () => {
       >
         {/* 子 Text (Flatten): 红色文本 */}
         <text
+          flatten={false}
           style={{
+            width: "200px",
+            height: "50px",
             fontSize: "18px",
-            color: "#e74c3c",
+            color: "black",
             fontWeight: "bold",
           }}
         >
-          1-Hello Flatten!
+          2-1 没拍平
+        </text>
+
+        <text
+          style={{
+            width: "200px",
+            height: "50px",
+            fontSize: "18px",
+            color: "black",
+            fontWeight: "bold",
+          }}
+        >
+         2-2 
+        </text>
+
+        <text
+          flatten={false}
+          style={{
+            width: "200px",
+            height: "50px",
+            fontSize: "18px",
+            color: "black",
+            fontWeight: "bold",
+          }}
+        >
+          2-3 没拍平
         </text>
       </view>
 
       <view
         style={{
           width: "200px",
-          height: "100px",
-          backgroundColor: "#3498db",
+          height: "50px",
+          backgroundColor: "#3498db", // Changed to blue
           justifyContent: "center",
           alignItems: "center",
           display: "flex",
@@ -66,22 +108,38 @@ export const AppViewTextFlatten = () => {
         {/* 子 Text (Flatten): 红色文本 */}
         <text
           style={{
+            width: "200px",
+            height: "50px",
             fontSize: "18px",
-            color: "#8e44ad", // Changed to purple
+            color: "black",
             fontWeight: "bold",
           }}
         >
-          2-Hello View!
+          3-1
         </text>
 
-                <text
+        <text
+          flatten={false}
           style={{
+            width: "200px",
+            height: "50px",
             fontSize: "18px",
-            color: "#2980b9", // Changed to blue
+            color: "black",
             fontWeight: "bold",
           }}
         >
-          2-1-Hello View!
+          3-2 没拍平
+        </text>
+        <text
+          style={{
+            width: "200px",
+            height: "50px",
+            fontSize: "18px",
+            color: "black",
+            fontWeight: "bold",
+          }}
+        >
+          3-3
         </text>
       </view>
     </view>

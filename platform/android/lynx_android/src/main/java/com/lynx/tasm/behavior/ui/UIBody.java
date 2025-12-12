@@ -569,41 +569,86 @@ public class UIBody extends UIGroup<UIBodyView> {
       return mPlatformRendererContext != null && mDisplayListApplier != null;
     }
 
+
+    /**
+     * 
+     * 重写ViewGroup的dispatchDraw方法, 劫持绘制逻辑, 插入拍平View的绘制.
+     * 
+     * 关键设计：通过绘制钩子实现Android原生绘制与Lynx拍平绘制的无缝混合
+     * 
+     * 核心作用：Lynx页面的绘制入口方法
+     * 1. 这是Android系统绘制UIBodyView（页面根View）的入口
+     * 2. 通过绘制钩子（IDrawChildHook）在Android原生绘制前后插入Lynx的绘制逻辑
+     * 3. 协调Android原生View与Lynx拍平UI（FlattenUI）的混合绘制
+     * 4. 维护正确的绘制顺序（DFS顺序）
+     *
+     * 绘制流程三阶段：
+     *   阶段1: beforeDispatchDraw() - Lynx绘制钩子（绘制前）
+     *   阶段2: super.dispatchDraw() - Android原生绘制（绘制所有子View）
+     *   阶段3: afterDispatchDraw()  - Lynx绘制钩子（绘制后）
+     */
     @Override
     protected void dispatchDraw(final Canvas canvas) {
+
+      // 这个优化的内容先不管他, 检查是否使用DisplayList模式绘制（一种优化绘制方式，录制绘制命令减少重复绘制）
       if (shouldDrawWithDisplayList()) {
         super.dispatchDraw(canvas);
         mDisplayListApplier.drawTillNextView(canvas);
         return;
       }
 
+      // 用于监控绘制耗时，优化性能
       mIsMeaningfulPaintingAreaInvalidate = false;
       ITimingCollector timingCollector = mTimingCollector.get();
       if (timingCollector != null) {
         timingCollector.markHostPlatformTiming(HOST_PLATFORM_DRAW_START);
       }
 
+      // 长任务监控，LynxLongTaskMonitor用于监控可能阻塞UI的长时间绘制任务
       boolean needLongTaskMonitor = LynxLongTaskMonitor.willProcessTask(
           "LynxTemplateRender.Draw", mInstanceId, getLongTaskMonitorEnabled());
+
+      // ========== 阶段1：绘制前钩子 ==========
+      // 关键！在Android原生绘制之前，调用Lynx的绘制钩子
+      // mDrawChildHook就是UIGroup对象，这里调用beforeDispatchDraw()
+      // 这个钩子允许Lynx在Android绘制子View之前插入自己的绘制逻辑
+      // 主要用于：绘制需要在Android子View之前显示的拍平UI
       if (mDrawChildHook != null) {
         mDrawChildHook.beforeDispatchDraw(canvas);
       }
 
+      // ========== 阶段2：Android原生绘制 ==========
+      // 关键！调用Android系统的原生绘制
+      // super.dispatchDraw(canvas)会：
+      // 1. 绘制UIBodyView自己的背景、内容等
+      // 2. 递归绘制所有子View（按DFS顺序）
+      // 3. 对于每个子View，会调用UIGroup.beforeDrawChild()钩子（重要！）
+      // 这是Android View系统的标准绘制流程
       super.dispatchDraw(canvas);
 
+      // ========== 阶段3：绘制后钩子 ==========
+      // 关键！在Android原生绘制之后，调用Lynx的绘制钩子
+      // 这里调用afterDispatchDraw()，允许Lynx在Android绘制完成后插入绘制逻辑
+      // 主要用于：绘制需要在所有Android子View之后显示的拍平UI
+      // 注意：实际上大部分拍平UI的绘制发生在beforeDrawChild()中，而不是这里
       if (mDrawChildHook != null) {
         mDrawChildHook.afterDispatchDraw(canvas);
       }
+
+      // 首次有意义的绘制（First Meaningful Paint）监控
       if (mHasMeaningfulLayout && !mHasMeaningfulPaint) {
         TraceEvent.instant(TraceEvent.CATEGORY_VITALS, TraceEventDef.FIRST_MEANINGFUL_PAINT);
         mMeaningfulPaintTiming = System.currentTimeMillis();
         mHasMeaningfulPaint = true;
       }
 
+      // 监控的逻辑, 如果有性能收集器，记录绘制结束时间点
       if (timingCollector != null) {
         timingCollector.markHostPlatformTiming(HOST_PLATFORM_DRAW_END);
         timingCollector.markPaintEndTimingIfNeeded();
       }
+
+      // 如果开启了长任务监控，标记任务完成
       if (needLongTaskMonitor) {
         LynxLongTaskMonitor.didProcessTask();
       }
@@ -646,6 +691,13 @@ public class UIBody extends UIGroup<UIBodyView> {
       }
     }
 
+    /**
+     * todo jiangjia 详细解释这里的作用和运行时调用链
+     * @param canvas The canvas on which to draw the child
+     * @param child Who to draw
+     * @param drawingTime The time at which draw is occurring
+     * @return
+     */
     @Override
     protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
       if (shouldDrawWithDisplayList()) {

@@ -3,8 +3,6 @@
 // LICENSE file in the root directory of this source tree.
 package com.lynx.tasm.base;
 
-import androidx.annotation.Nullable;
-
 /**
  * 绘制链表操作记录数据结构
  * 用于记录插入(insert)和删除(remove)操作的关键信息，方便序列化输出到日志
