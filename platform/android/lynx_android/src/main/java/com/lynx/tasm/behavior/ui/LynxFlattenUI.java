@@ -90,6 +90,7 @@ public class LynxFlattenUI extends LynxBaseUI {
     }
   }
 
+  // todo jiangjia 看看这里的坐标系传递。
   // x, y 是父节点传下来的绝对坐标起点
   public void layout(int x, int y, Rect bounds) {
     // set child's drawing x,y and bounds
@@ -147,6 +148,7 @@ public class LynxFlattenUI extends LynxBaseUI {
         child.updateDrawingLayoutInfo(childX, childY, childBounds);
         ((LynxUI) child).layout();
       } else if (child.isFlatten()) {
+        // todo jiangjia, 理解这里的坐标系转换. 这样才能正确的绘制.
         // 2. 递归调用！
         // 将计算好的绝对坐标 childX, childY 传给子节点
         // LynxFlattenUI should calculate the real (x,y) and bounds.
@@ -221,7 +223,7 @@ public class LynxFlattenUI extends LynxBaseUI {
     // Before the official release, add try-catch protection. If a crash occurs, fallback to the old
     // logic.
     if (mRenderNode == null || !isHardwareDraw(canvas)) {
-      draw(canvas);
+      draw(canvas); // 软件渲染，走这里。
       return;
     }
     boolean isValidate = mIsValidate;
@@ -232,7 +234,7 @@ public class LynxFlattenUI extends LynxBaseUI {
     if (!mRenderNode.hasDisplayList()) {
       return;
     }
-    mRenderNode.drawRenderNode(canvas);
+    mRenderNode.drawRenderNode(canvas); // 硬件渲染，走这里。
   }
 
   public final RenderNodeCompat updateRenderNode() {

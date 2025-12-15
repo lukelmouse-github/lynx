@@ -626,6 +626,7 @@ public final class PaintingContext implements IPaintingContext {
     });
   }
 
+  // 看看这里的bounds
   private void setLayoutData(int sign, int x, int y, int width, int height, int paddingLeft,
       int paddingTop, int paddingRight, int paddingBottom, int marginLeft, int marginTop,
       int marginRight, int marginBottom, int borderLeftWidth, int borderTopWidth,
@@ -640,6 +641,16 @@ public final class PaintingContext implements IPaintingContext {
    * The int array represents the rect(4), paddings(4), margins(4), borders(4), has_bound,
    * has_sticky and max_height for the layout info.
    * The float array allows for variable lengths.
+   */
+  // TODO 看看这里的是如何影响虚拟节点的bounds的?
+
+  /**
+   * ⏺ 关键流程：
+   *   1. C++ 布局引擎 计算每个节点的布局
+   *   2. 通过 JNI 调用 LynxUIOwner.updateLayout()
+   *   3. 传递参数：包括 bound（第370行）
+   *   4. 调用 ui.updateLayout()（第417-419行）
+   *   5. 存储 mBound = bound（在 updateLayoutInfo 中）
    */
   @CalledByNative
   public void UpdateLayoutPatching(

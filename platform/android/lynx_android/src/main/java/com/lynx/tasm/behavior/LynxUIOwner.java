@@ -48,6 +48,7 @@ import com.lynx.tasm.behavior.ui.UIBody;
 import com.lynx.tasm.behavior.ui.UIBody.UIBodyView;
 import com.lynx.tasm.behavior.ui.UIGroup;
 import com.lynx.tasm.behavior.ui.UIParams;
+import com.lynx.tasm.behavior.ui.UIParent;
 import com.lynx.tasm.behavior.ui.UIShadowProxy;
 import com.lynx.tasm.behavior.ui.accessibility.LynxAccessibilityWrapper;
 import com.lynx.tasm.behavior.ui.list.UIList;
@@ -1057,23 +1058,17 @@ public class LynxUIOwner {
    * @param parent 在UI树中的逻辑父节点
    * @param child 要插入的子节点（可能是拍平或非拍平）
    * @param index 在父节点 children 列表中的位置索引
-   *              
-   * 将 child 插入到绘制链表中，确保绘制顺序与DOM绘制顺序一致，同时正确处理拍平UI与非拍平UI的混合场景。
-   * 
-   * DOM绘制顺序是个dfs.
-   * 如果是纯NativeView的组合(没有FlattenView). 那么如果把他的DOM结构转换成链表的结构呢? ---> 直接正常的DFS递归即可.写出来就行.
-   *               同时,如何在插入的过程中,动态的更新这个链表的结构呢? --->  (这个问题的答案,就是目前的insertIntoDrawList)
-   *               可以逐步画图,然后观察这个构建的过程,会自然的发现,每次给某个A节点插入他的child节点时,从DFS序上看,肯定会在A的最后一个右孩子后面插入.(画图理解)
-   *                        --- 再深入思考, 我们会发现,如果直接用单链表做这种插入的话,每次都需要重新找上一个节点(这个过程可以被双向链表直接替代), 
-   *                                            所以最终插入算法就是一个很自然的双向链表插入, 且最终的链表遍历是一个DFS序,跟DOM结构一模一样.
-   *                                          
-   *              动态构建完成这个绘制的双向链表之后, 需要思考这个链表遍历的过程,也就是draw的过程. -- 本质上这个过程不需要思考真实View和虚拟View之间的关系.
-   *              
-   *              因为遇到了什么问题,才需要  (只能在真实View上挂载虚拟View的结论? --> 两套绘制系统的结合!) --> 两套渲染系统的结合,就是在Android系统渲染上加hook操作即可.
-   *              
-   *              接着,进一步思考, 如何让NativeView的系统渲染流程跟FlattenView的渲染流程相结合呢? ---> 链表的draw过程.                              
-   *                                                                   
-   *               
+   *
+   *   绘制链表拥有权规则：
+   *
+   *   1. 只有继承自UIGroup的非拍平UI才能拥有绘制链表
+   *     - UIGroup → LynxUI → LynxBaseUI
+   *     - mDrawHead字段定义在LynxUI中
+   *     - 只有非拍平的UIGroup实例才真正使用这个字段
+   *   2. 所有其他UI都必须被链接到某个UIGroup的绘制链表中：
+   *     - 拍平的UIGroup：没有绘制链表，找最近的祖先非拍平UIGroup
+   *     - 非拍平的叶子UI（如UIImage, UIInput等）：被添加到父UIGroup的绘制链表
+   *     - 拍平的叶子UI：被添加到最近祖先非拍平UIGroup的绘制链表
    *               
    */
   private void insertIntoDrawList(LynxBaseUI parent, LynxBaseUI child, int index) {
@@ -1094,6 +1089,17 @@ public class LynxUIOwner {
     } else {
       // find precursor in the drawList. Should be the first non-flatten right most UI in brother
       // node's sub UI tree.
+      /**
+       * 前序节点的含义是当前逻辑Parent的最右子View, 只有插到这个View的后面,才能保证绘制链表的结构符合 视图的绘制顺序.
+       *
+       * 但是,
+       * 如果当前Parent的最右子View,它还是一个ViewGroup, 那我们就要继续递归的找下去,找到才真是真的最右子孩子.
+       * 
+       * !pre.getChildren().isEmpty() 用来判断他是不是ViewGroup的, 有孩子就说明是一个ViewGroup.
+       * 他用循环代替了递归.
+       * 
+       * 这里的parent是一个逻辑上的父节点,因为我们有虚拟的ViewGroup, 所以每个View就需要多保存一个这parent.
+       */
       LynxBaseUI pre = parent.getChildAt(index - 1);
       while (pre.isFlatten() && !pre.getChildren().isEmpty()) {
         pre = pre.getChildAt(pre.getChildren().size() - 1);
@@ -1121,7 +1127,141 @@ public class LynxUIOwner {
   }
 
   public void printDebugDrawList() {
-    
+    StringBuilder sb = new StringBuilder();
+    sb.append("\n========== 绘制链表调试信息 ==========\n");
+
+    // 从根节点开始遍历
+    UIBody root = getRootUI();
+    if (root == null) {
+      sb.append("根节点为空\n");
+      ALog.d("DRAW_DEBUG", sb.toString());
+      return;
+    }
+
+    // 收集所有UIGroup（包括根节点）
+    List<UIGroup> allGroups = new ArrayList<>();
+    collectAllUIGroups(root, allGroups);
+
+    sb.append("总共找到 ").append(allGroups.size()).append(" 个绘制链表拥有者(UIGroup)\n");
+
+    for (UIGroup group : allGroups) {
+      printGroupDrawList(sb, group);
+    }
+
+    sb.append("========== 绘制链表调试结束 ==========\n");
+    ALog.d("DRAW_DEBUG", sb.toString());
+  }
+
+  private void collectAllUIGroups(LynxBaseUI ui, List<UIGroup> groups) {
+    if (ui instanceof UIGroup) {
+      groups.add((UIGroup) ui);
+    }
+
+    for (LynxBaseUI child : ui.getChildren()) {
+      collectAllUIGroups(child, groups);
+    }
+  }
+
+  private void printGroupDrawList(StringBuilder sb, UIGroup group) {
+    sb.append("\n--- 绘制链表拥有者: ")
+      .append(group.getTagName())
+      .append(" [id:")
+      .append(group.getSign())
+      .append(", class:")
+      .append(group.getClass().getSimpleName())
+      .append("] ---\n");
+
+    LynxBaseUI head = group.getDrawHead();
+    if (head == null) {
+      sb.append("  链表为空\n");
+      return;
+    }
+
+    int index = 0;
+    LynxBaseUI current = head;
+    while (current != null) {
+      sb.append("  [").append(index++).append("] ");
+      sb.append("id:").append(current.getSign());
+      sb.append(", tag:").append(current.getTagName());
+      sb.append(", class:").append(current.getClass().getSimpleName());
+      sb.append(", flatten:").append(current.isFlatten());
+
+      // 显示前后关系
+      sb.append(", prev:");
+      if (current.getPreviousDrawUI() != null) {
+        sb.append(current.getPreviousDrawUI().getSign());
+      } else {
+        sb.append("null");
+      }
+
+      sb.append(", next:");
+      if (current.getNextDrawUI() != null) {
+        sb.append(current.getNextDrawUI().getSign());
+      } else {
+        sb.append("null");
+      }
+
+      // 显示绘制父节点
+      UIParent drawParent = current.getDrawParent();
+      sb.append(", drawParent:");
+      if (drawParent instanceof LynxBaseUI) {
+        sb.append(((LynxBaseUI) drawParent).getSign());
+      } else {
+        sb.append("null");
+      }
+
+      sb.append("\n");
+      current = current.getNextDrawUI();
+    }
+
+    // 验证链表完整性
+    sb.append("  链表验证: ");
+    if (validateDrawList(group)) {
+      sb.append("✓ 链表完整\n");
+    } else {
+      sb.append("✗ 链表损坏\n");
+    }
+  }
+
+  private boolean validateDrawList(UIGroup group) {
+    LynxBaseUI head = group.getDrawHead();
+    if (head == null) {
+      return true; // 空链表是有效的
+    }
+
+    // 检查头节点的前驱应为null
+    if (head.getPreviousDrawUI() != null) {
+      return false;
+    }
+
+    // 遍历链表，检查双向指针的一致性
+    LynxBaseUI current = head;
+    LynxBaseUI prev = null;
+    int count = 0;
+    final int MAX_NODES = 1000; // 防止无限循环
+
+    while (current != null && count < MAX_NODES) {
+      // 检查前驱指针
+      if (current.getPreviousDrawUI() != prev) {
+        return false;
+      }
+
+      // 检查绘制父节点
+      UIParent drawParent = current.getDrawParent();
+      if (!(drawParent instanceof UIGroup) || drawParent != group) {
+        return false;
+      }
+
+      prev = current;
+      current = current.getNextDrawUI();
+      count++;
+    }
+
+    if (count >= MAX_NODES) {
+      return false; // 可能循环链表
+    }
+
+    return true;
   }
 
   public void remove(int parentTag, int childTag) {
@@ -1228,8 +1368,7 @@ public class LynxUIOwner {
       }
       // Break the list and remove the view
       child.setPreviousDrawUI(null);
-      for (LynxBaseUI ui = child.getNextDrawUI(); ui != last.getNextDrawUI();
-           ui = ui.getNextDrawUI()) {
+      for (LynxBaseUI ui = child.getNextDrawUI(); ui != last.getNextDrawUI(); ui = ui.getNextDrawUI()) {
         // Node in subtree is not flatten, remove it from drawParent's view tree
         ui.getPreviousDrawUI().setNextDrawUI(null);
         ui.setPreviousDrawUI(null);

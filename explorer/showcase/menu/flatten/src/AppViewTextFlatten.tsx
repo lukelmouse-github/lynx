@@ -96,6 +96,7 @@ export const AppViewTextFlatten = () => {
       </view>
 
       <view
+      flatten={false}
         style={{
           width: "200px",
           height: "50px",

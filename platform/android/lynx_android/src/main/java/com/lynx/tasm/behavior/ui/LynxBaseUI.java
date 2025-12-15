@@ -212,6 +212,9 @@ public abstract class LynxBaseUI
   private boolean mEnableScrollMonitor;
   private Rect mBound;
 
+  /**
+   * 每个虚拟节点都维护一个 left和top的坐标,而且这个坐标是相对于drawParent的.
+   */
   // Relative position value to drawParent for drawing.
   private int mLeft;
   private int mTop;

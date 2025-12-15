@@ -751,7 +751,7 @@ public abstract class UIGroup<T extends ViewGroup>
    */
   protected void drawChild(LynxFlattenUI child, Canvas canvas) {
     // 获取扁平UI的边界矩形（位置和大小）
-    Rect bound = child.getBound();
+    Rect bound = child.getBound(); //
 
     // ========== 步骤1：保存Canvas状态 ==========
     // 保存当前Canvas的所有状态（变换矩阵、裁剪区域等）

@@ -589,8 +589,7 @@ public class UIBody extends UIGroup<UIBodyView> {
      */
     @Override
     protected void dispatchDraw(final Canvas canvas) {
-
-      // 这个优化的内容先不管他, 检查是否使用DisplayList模式绘制（一种优化绘制方式，录制绘制命令减少重复绘制）
+      
       if (shouldDrawWithDisplayList()) {
         super.dispatchDraw(canvas);
         mDisplayListApplier.drawTillNextView(canvas);

@@ -21,196 +21,117 @@ const SAMPLE_IMAGE_PURPLE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
  */
 export const AppNonFlatten = () => {
   return (
+    <view
+      style={{
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "20px",
+        backgroundColor: "#fafafa",
+      }}
+    >
       <view
-        flatten={false}
         style={{
-          width: "100%",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          padding: "20px",
-          backgroundColor: "#fafafa",
+          marginTop: "20px",
+          padding: "12px",
+          backgroundColor: "#ffebee",
+          borderRadius: "8px",
+          width: "90%",
+          borderLeft: "4px solid #f44336",
         }}
       >
-        <text
-        flatten={false}
-          style={{
-            fontSize: "24px",
-            fontWeight: "bold",
-            marginBottom: "10px",
-            color: "#333",
-          }}
-        >
-          ❌ 禁用拍平 (Non-Flattened)
-        </text>
-
-        <text
-        flatten={false} 
-          style={{
-            fontSize: "14px",
-            marginBottom: "20px",
-            textAlign: "center",
-            color: "#666",
-            width: "90%",
-          }}
-        >
-          此页面所有元素都**未**被拍平。
-          {"\n"}
-          使用 Layout Inspector 查看时，你可以看到完整的 View 树结构，每个元素对应一个 Android View。
-        </text>
-
-        {/* 非拍平容器 - 使用 flatten={false} 禁用拍平 */}
-        <view
-          // @ts-ignore
-          flatten={false}
-          style={{
-            width: "90%",
-            backgroundColor: "white",
-            borderRadius: "10px",
-            padding: "15px",
-            border: "2px solid #f44336",
-          }}
-        >
-          {/* 元素1: 文本 */}
-          <view 
-            // @ts-ignore
-            flatten={false}
-            style={{ display: "flex", flexDirection: "row", alignItems: "center", marginBottom: "12px" }}
-          >
-            <text style={{ fontSize: "12px", color: "#999", width: "30px" }}>①</text>
-            <text style={{ fontSize: "16px", color: "#e74c3c", flex: 1 }}>
-              文本节点
-            </text>
-          </view>
-
-          {/* 元素2: 绿色圆形图片 */}
-          <view 
-            // @ts-ignore
-            flatten={false}
-            style={{ display: "flex", flexDirection: "row", alignItems: "center", marginBottom: "12px" }}
-          >
-            <text style={{ fontSize: "12px", color: "#999", width: "30px" }}>②</text>
-            <image
-              src={SAMPLE_IMAGE_GREEN}
-              style={{
-                width: "40px",
-                height: "40px",
-                marginRight: "10px",
-              }}
-            />
-            <text style={{ fontSize: "14px", color: "#27ae60" }}>绿色圆形</text>
-          </view>
-
-          {/* 元素3: 蓝色矩形View */}
-          <view 
-            // @ts-ignore
-            flatten={false}
-            style={{ display: "flex", flexDirection: "row", alignItems: "center", marginBottom: "12px" }}
-          >
-            <text style={{ fontSize: "12px", color: "#999", width: "30px" }}>③</text>
-            <view
-              // @ts-ignore
+              <view
               flatten={false}
-              style={{
-                width: "60px",
-                height: "30px",
-                backgroundColor: "#3498db",
-                borderRadius: "5px",
-                marginRight: "10px",
-              }}
-              
-            />
-            <text style={{ fontSize: "14px", color: "#3498db" }}>蓝色矩形</text>
-                    <view
-          // @ts-ignore
-          flatten={false}
-          style={{
-            width: "90%",
-            backgroundColor: "white",
-            borderRadius: "10px",
-            padding: "15px",
-            border: "2px solid #f44336",
-          }}
-        >
-          {/* 元素1: 文本 */}
-          <view 
-            // @ts-ignore
-            flatten={false}
-            style={{ display: "flex", flexDirection: "row", alignItems: "center", marginBottom: "12px" }}
-          >
-            <text style={{ fontSize: "12px", color: "#999", width: "30px" }}>①</text>
-            <text style={{ fontSize: "16px", color: "#e74c3c", flex: 1 }}>
-              文本节点
-            </text>
-          </view>
-
-          {/* 元素2: 绿色圆形图片 */}
-          <view 
-            // @ts-ignore
-            flatten={false}
-            style={{ display: "flex", flexDirection: "row", alignItems: "center", marginBottom: "12px" }}
-          >
-            <text style={{ fontSize: "12px", color: "#999", width: "30px" }}>②</text>
-            <image
-              src={SAMPLE_IMAGE_GREEN}
-              style={{
-                width: "40px",
-                height: "40px",
-                marginRight: "10px",
-              }}
-            />
-            <text style={{ fontSize: "14px", color: "#27ae60" }}>绿色圆形</text>
-          </view>
-
-          {/* 元素3: 蓝色矩形View */}
-          <view 
-            // @ts-ignore
-            flatten={false}
-            style={{ display: "flex", flexDirection: "row", alignItems: "center", marginBottom: "12px" }}
-          >
-            <text style={{ fontSize: "12px", color: "#999", width: "30px" }}>③</text>
-            <view
-              // @ts-ignore
+        style={{
+          marginTop: "20px",
+          padding: "12px",
+          backgroundColor: "#ffebee",
+          borderRadius: "8px",
+          width: "90%",
+          borderLeft: "4px solid #f44336",
+        }}
+      >
+              <view
+        style={{
+          marginTop: "20px",
+          padding: "12px",
+          backgroundColor: "#ffebee",
+          borderRadius: "8px",
+          width: "90%",
+          borderLeft: "4px solid #f44336",
+        }}
+      >
+              <view
               flatten={false}
-              style={{
-                width: "60px",
-                height: "30px",
-                backgroundColor: "#3498db",
-                borderRadius: "5px",
-                marginRight: "10px",
-              }}
-            />
-            <text style={{ fontSize: "14px", color: "#3498db" }}>蓝色矩形</text>
-          </view>
-        </view>
-          </view>
-        </view>
-
-        {/* 说明信息 */}
-        <view
-        flatten={false} 
-          style={{
-            marginTop: "20px",
-            padding: "12px",
-            backgroundColor: "#ffebee",
-            borderRadius: "8px",
-            width: "90%",
-            borderLeft: "4px solid #f44336",
-          }}
-        >
-          <text
-          flatten={false} 
-            style={{
-              fontSize: "12px",
-              color: "#d32f2f",
-              lineHeight: "1.6",
-            }}
-          >
-            ❌ 状态：未拍平
-            {"\n"}
-            所有 10 个元素都创建了独立的 Android View 对象。
-          </text>
-        </view>
+        style={{
+          marginTop: "20px",
+          padding: "12px",
+          backgroundColor: "#ffebee",
+          borderRadius: "8px",
+          width: "90%",
+          borderLeft: "4px solid #f44336",
+        }}
+      >
+              <view
+        style={{
+          marginTop: "20px",
+          padding: "12px",
+          backgroundColor: "#ffebee",
+          borderRadius: "8px",
+          width: "90%",
+          borderLeft: "4px solid #f44336",
+        }}
+      >
+              <view
+        style={{
+          marginTop: "20px",
+          padding: "12px",
+          backgroundColor: "#ffebee",
+          borderRadius: "8px",
+          width: "90%",
+          borderLeft: "4px solid #f44336",
+        }}
+      >
+              <view
+        style={{
+          marginTop: "20px",
+          padding: "12px",
+          backgroundColor: "#ffebee",
+          borderRadius: "8px",
+          width: "90%",
+          borderLeft: "4px solid #f44336",
+        }}
+      >
+              <view
+        style={{
+          marginTop: "20px",
+          padding: "12px",
+          backgroundColor: "#ffebee",
+          borderRadius: "8px",
+          width: "90%",
+          borderLeft: "4px solid #f44336",
+        }}
+      >
+              <view
+              flatten={false}
+        style={{
+          marginTop: "20px",
+          padding: "12px",
+          backgroundColor: "#ffebee",
+          borderRadius: "8px",
+          width: "90%",
+          borderLeft: "4px solid #f44336",
+        }}
+      ></view>
       </view>
+      </view>
+      </view>
+      </view>
+      </view>
+      </view>
+      </view>
+      </view>
+    </view>
   );
 };
