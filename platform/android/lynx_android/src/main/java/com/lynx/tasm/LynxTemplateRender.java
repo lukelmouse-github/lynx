@@ -2797,7 +2797,7 @@ public class LynxTemplateRender
       mLynxEngineRef.updateLynxEngineState(LynxEngine.LynxEngineState.READY_BE_REUSED);
     }
   }
-
+  
   public boolean dispatchTouchEvent(MotionEvent ev) {
     checkEngineFallbackAndLoad(false);
     // stop FSP tracer when user interaction happens.

@@ -643,52 +643,126 @@ public class TouchEventDispatcher {
     }
   }
 
+  /**
+   * 分发多点触摸事件到JavaScript - 事件传递的关键桥梁
+   *
+   * 方法功能：将多点触摸事件封装为LynxTouchEvent，通过EventEmitter发送到JavaScript
+   * 这是事件从Java层传递到C++/JavaScript层的核心方法之一
+   *
+   * 事件传递链路：
+   * dispatchEvent → eventEmitter().sendMultiTouchEvent → LynxEngineProxy.sendMultiTouchEvent →
+   * nativeSendMultiTouchEvent (JNI) → C++事件系统 → JavaScript事件监听器
+   *
+   * 关键操作：
+   * 1. 创建LynxTouchEvent对象，包含事件类型、坐标、时间戳等信息
+   * 2. 设置活动目标映射（mActiveTargetMap），包含所有触摸点对应的UI
+   * 3. 分发冒泡触摸事件到手势竞技场（用于手势冲突处理）
+   * 4. 通过EventEmitter发送事件到JavaScript
+   *
+   * @param eventName 事件名称（如EVENT_TOUCH_START、EVENT_TOUCH_MOVE等）
+   * @param ev Android MotionEvent对象
+   * @param map JavaOnlyMap对象，包含所有触摸点的详细信息
+   *           结构：{sign: [[pointerId, clientX, clientY, pageX, pageY, viewX, viewY], ...]}
+   */
   // dispatch event for touch* .
   // TODO(hexionghui): Merge two dispatchEvent interfaces into one.
   private void dispatchEvent(String eventName, MotionEvent ev, JavaOnlyMap map) {
+    // 初始化第一个Lynx触摸事件对象
+    // 包含事件类型、目标UI签名、坐标信息等
     mFirstLynxTouchEvent = initialFirstLynxTouchEvent(mActiveUI, eventName, ev);
     mFirstLynxTouchEvent.setMotionEvent(ev);
+
+    // 创建多点触摸事件对象
     LynxTouchEvent event = new LynxTouchEvent(eventName, map);
     event.setMotionEvent(ev);
+    // 设置活动目标映射，包含所有触摸点对应的UI
     event.setActiveTargetMap(mActiveTargetMap);
+    // 设置主要目标UI（第一个手指按下的UI）
     event.setTarget(mActiveUI);
+    // 设置事件时间戳
     event.setTimestamp(mTimestamp);
+
+    // 如果启用手势竞技场，分发冒泡触摸事件
+    // 手势竞技场用于处理手势的竞争和冲突解决
     if (mGestureArenaManager != null) {
       mGestureArenaManager.dispatchBubbleTouchEvent(eventName, mFirstLynxTouchEvent);
     }
+
+    // 关键调用：通过EventEmitter发送多点触摸事件到JavaScript
+    // eventEmitter()返回LynxEventEmitter实例，负责事件的中转
     eventEmitter().sendMultiTouchEvent(event);
   }
 
+  /**
+   * 分发单点触摸事件到JavaScript - 用于tap、click、longpress等手势事件
+   *
+   * 方法功能：将单点触摸事件封装为LynxTouchEvent，通过EventEmitter发送到JavaScript
+   * 这是手势事件（点击、长按等）传递到JavaScript的核心方法
+   *
+   * 坐标系统：
+   * 1. 客户端坐标（clientPoint）：相对于屏幕的坐标
+   * 2. 页面坐标（pagePoint）：相对于LynxView的坐标
+   * 3. 视图坐标（viewPoint）：相对于目标UI的本地坐标
+   *
+   * 事件类型：
+   * - EVENT_TOUCH_START: 触摸开始
+   * - EVENT_TOUCH_MOVE: 触摸移动
+   * - EVENT_TOUCH_END: 触摸结束
+   * - EVENT_TOUCH_CANCEL: 触摸取消
+   * - EVENT_TAP: 轻触
+   * - EVENT_CLICK: 点击
+   * - EVENT_LONG_PRESS: 长按
+   *
+   * @param target 目标UI元素
+   * @param eventName 事件名称
+   * @param ev Android MotionEvent对象
+   */
   // dispatch event for tap, click, longpress.
   private void dispatchEvent(EventTarget target, String eventName, MotionEvent ev) {
+    // 坐标转换：将页面坐标转换为目标UI的本地坐标
     mTargetPoint = convertToViewPoint(mActiveUI, new Point(ev.getX(0), ev.getY(0)));
+
+    // 页面坐标：相对于LynxView的坐标
     LynxTouchEvent.Point pagePoint = new LynxTouchEvent.Point(ev.getX(0), ev.getY(0));
+
+    // 客户端坐标：相对于屏幕的坐标
+    // 通过LynxUIHelper.convertPointFromUIToScreen进行坐标转换
     PointF point = LynxUIHelper.convertPointFromUIToScreen(
         mUIOwner.getRootUI(), new PointF(pagePoint.getX(), pagePoint.getY()));
     LynxTouchEvent.Point clientPoint = new Point(point.x, point.y);
+
+    // 创建LynxTouchEvent对象，包含三种坐标系统和目标UI签名
     mFirstLynxTouchEvent =
         new LynxTouchEvent(target.getSign(), eventName, clientPoint, pagePoint, mTargetPoint);
     mFirstLynxTouchEvent.setMotionEvent(ev);
     mFirstLynxTouchEvent.setTarget(mActiveUI);
     mFirstLynxTouchEvent.setTimestamp(mTimestamp);
 
+    // 如果是触摸开始事件，进行命中目标检查
     if (EVENT_TOUCH_START.equals(eventName)) {
+      // 检查命中目标（用于开发工具调试）
       inspectHitTarget();
+      // 如果启用了触摸高亮，在控制台显示命中信息
       if (LynxEnv.inst().isHighlightTouchEnabled()) {
         showMessageOnConsole(TAG + ": hit the target with sign = " + target.getSign(),
             LogBoxLogLevel.Info.ordinal());
       }
     }
 
+    // 检查EventEmitter是否可用
     if (eventEmitter() == null) {
       LLog.i(TAG, "dispatchEvent failed since eventEmitter() null");
       return;
     }
 
-    // dispatch bubble touch event to gesture arena
+    // 如果启用手势竞技场，分发冒泡触摸事件
+    // 冒泡事件用于手势竞技场中的手势识别和冲突解决
     if (mGestureArenaManager != null) {
       mGestureArenaManager.dispatchBubbleTouchEvent(eventName, mFirstLynxTouchEvent);
     }
+
+    // 关键调用：通过EventEmitter发送单点触摸事件到JavaScript
+    // 最终会调用LynxEngineProxy.sendTouchEvent → nativeSendTouchEvent
     eventEmitter().sendTouchEvent(mFirstLynxTouchEvent);
   }
 
@@ -799,59 +873,124 @@ public class TouchEventDispatcher {
     return true;
   }
 
+  /**
+   * 处理第一个手指按下事件 - 触摸序列的起点
+   *
+   * 方法功能：初始化触摸环境，执行命中测试，分发TOUCH_START事件
+   * 这是触摸事件处理的核心入口，负责：
+   * 1. 命中测试（hitTest）找到被触摸的UI元素
+   * 2. 坐标转换（页面坐标 → 视图坐标）
+   * 3. 事件穿透检查
+   * 4. 初始化触摸环境数据结构
+   * 5. 分发TOUCH_START事件到JavaScript
+   * 6. 激活伪类状态（:active）
+   * 7. 处理子LynxPageUI的事件传递
+   *
+   * 关键操作：
+   * - findUI: 通过hitTest找到触摸点下的UI元素
+   * - convertToViewPoint: 将页面坐标转换为UI元素的本地坐标
+   * - eventThrough: 检查UI是否允许事件穿透
+   * - dispatchEvent: 分发事件到JavaScript
+   * - onActionDown: 激活:active伪类状态
+   *
+   * @param ev MotionEvent对象
+   * @param rootUi 根UI组，用于命中测试
+   * @return true表示事件被处理，false表示事件穿透
+   */
   public boolean handleFirstTouchDown(MotionEvent ev, UIGroup rootUi) {
+    // 重置第一个手指按下点坐标
     mFirstFingerDownPoint.setX(0);
     mFirstFingerDownPoint.setY(0);
+
+    // ============ 第1步：命中测试（hitTest） ============
+    // 通过findUI方法在UI树中查找触摸点下的目标UI元素
+    // findUI会调用rootUi.hitTest(x, y)进行递归查找
     mActiveUI = findUI(ev, 0, rootUi);
+
+    // ============ 第2步：坐标转换 ============
+    // 创建页面坐标点（相对于LynxView的坐标）
     LynxTouchEvent.Point pagePoint = new Point(ev.getX(), ev.getY());
     mFirstFingerDownPoint = pagePoint;
+
+    // 如果目标UI是LynxBaseUI，将页面坐标转换为UI的本地坐标
+    // 例如：如果UI在(100,100)位置，触摸点在(150,150)，则本地坐标为(50,50)
     if (mActiveUI instanceof LynxBaseUI) {
       mFirstFingerDownPoint = convertToViewPoint(mActiveUI, pagePoint);
     }
+
+    // ============ 第3步：事件穿透检查 ============
+    // 检查UI是否配置了enableEventThrough属性
+    // 如果允许事件穿透，返回false，事件不会由Lynx处理
     if (mActiveUI != null
         && mActiveUI.eventThrough(mFirstFingerDownPoint.getX(), mFirstFingerDownPoint.getY())) {
       return false;
     }
+
+    // ============ 第4步：初始化触摸环境 ============
+    // 初始化触摸相关的环境变量和数据结构
     initTouchEnv(ev);
+    // 初始化点击环境（用于后续的click/tap事件处理）
     initClickEnv();
+
+    // ============ 第5步：更新活动UI映射 ============
+    // 将第一个手指（pointerId=0）映射到目标UI
+    // EventTargetDetail包含UI引用和按下点坐标
     mActiveUIMap.put(ev.getPointerId(0), new EventTargetDetail(mActiveUI, ev.getX(0), ev.getY(0)));
+    // 将UI签名映射到UI对象，用于后续事件分发
     mActiveTargetMap.put(mActiveUI.getSign(), mActiveUI);
 
-    // set the active ui to gesture arena
+    // ============ 第6步：手势竞技场设置 ============
+    // 如果启用手势竞技场，将激活的UI设置到竞技场
+    // 手势竞技场用于处理复杂的手势竞争（如滑动冲突）
     if (mGestureArenaManager != null) {
       mGestureArenaManager.setActiveUIToArenaAtDownEvent(mActiveUI);
     }
+
+    // ============ 第7步：配置长按超时 ============
+    // 获取系统默认的长按超时时间，或使用LynxContext自定义的超时时间
     int longPressDuration = ViewConfiguration.getLongPressTimeout();
     if (mUIOwner.getContext().getLongPressDuration() >= 0) {
       longPressDuration = mUIOwner.getContext().getLongPressDuration();
     }
+    // 设置手势识别器的长按超时时间
     mDetector.setLongPressTimeout(longPressDuration);
 
+    // ============ 第8步：分发TOUCH_START事件到JavaScript ============
+    // 这是事件传递到JavaScript的关键步骤
     if (mEnableMultiTouch) {
+      // 多点触摸模式：使用JavaOnlyMap传递所有触摸点信息
       JavaOnlyMap map = new JavaOnlyMap();
-      addMap(map, ev, 0);
-      dispatchEvent(EVENT_TOUCH_START, ev, map);
+      addMap(map, ev, 0);  // 将第一个手指的信息添加到map
+      dispatchEvent(EVENT_TOUCH_START, ev, map);  // 分发多点触摸事件
     } else {
-      dispatchEvent(mActiveUI, EVENT_TOUCH_START, ev);
+      // 单点触摸模式：直接分发事件到目标UI
+      dispatchEvent(mActiveUI, EVENT_TOUCH_START, ev);  // 分发单点触摸事件
     }
 
-    // TODO(hexionghui): For the :active logic, it should only support single finger. But on the
-    // Android side, touching two fingers at the same time will trigger onTouchEvent twice,
-    // causing the :active on the Android side to also take effect when two fingers touch it at
-    // the same time.
+    // ============ 第9步：激活伪类状态 ============
+    // TODO(hexionghui): :active逻辑应该只支持单指。但在Android端，同时触摸两个手指会触发两次onTouchEvent，
+    // 导致Android端的:active在两个手指同时触摸时也会生效。
+    // 激活:active伪类状态，改变UI的视觉样式
     onActionDown(ev);
 
+    // ============ 第10步：处理子LynxPageUI事件传递 ============
+    // 如果当前UI包含子LynxPageUI，需要将事件传递给子页面的事件分发器
+    // 这支持嵌套的Lynx页面结构
     if (mActiveUI != null && mActiveUI.getChildrenLynxPageUI() != null) {
       UIBody childLynxPageUI = (UIBody) mActiveUI.getChildrenLynxPageUI().get(
           String.valueOf(System.identityHashCode(mActiveUI)));
       if (childLynxPageUI != null && childLynxPageUI.getLynxContext() != null
           && childLynxPageUI.getLynxContext().getTouchEventDispatcher() != null) {
+        // 调整事件坐标到子页面的坐标系
         ev.setLocation(
             mFirstLynxTouchEvent.getViewPoint().getX(), mFirstLynxTouchEvent.getViewPoint().getY());
+        // 递归调用子页面的事件分发器
         childLynxPageUI.getLynxContext().getTouchEventDispatcher().handleFirstTouchDown(
             ev, childLynxPageUI);
       }
     }
+
+    // 返回true表示事件被成功处理
     return true;
   }
 
@@ -1010,41 +1149,102 @@ public class TouchEventDispatcher {
     return false;
   }
 
+  /**
+   * TouchEventDispatcher核心事件处理方法 - Lynx事件系统的Java层核心
+   *
+   * 方法功能：处理触摸事件的完整生命周期，包括单点触摸、多点触摸、手势识别等
+   * 这是Lynx事件分发链路的Java层核心，负责：
+   * 1. 事件状态管理（按下、移动、抬起、取消）
+   * 2. 命中测试（hitTest）找到目标UI元素
+   * 3. 事件分发到JavaScript（通过EventEmitter）
+   * 4. 手势识别（通过GestureRecognizer）
+   * 5. 手势竞技场管理（GestureArenaManager）
+   *
+   * 完整的事件分发链路：
+   * Android系统 → LynxView.dispatchTouchEvent → LynxTemplateRender.dispatchTouchEvent →
+   * LynxUIRenderer.onTouchEvent → TouchEventDispatcher.onTouchEvent →
+   * 1. handleFirstTouchDown/handleTouchMove/handleFirstTouchUp等具体处理方法
+   * 2. dispatchEvent → EventEmitter.sendTouchEvent → LynxEngineProxy.sendTouchEvent →
+   *    nativeSendTouchEvent (JNI调用) → C++事件系统 → JavaScript事件监听器
+   *
+   * 关键数据结构：
+   * - mActiveUI: 当前激活的UI元素（第一个手指按下的目标）
+   * - mActiveUIMap: 手指ID到UI元素的映射（支持多点触摸）
+   * - mActiveTargetMap: UI签名到UI元素的映射
+   * - mFirstFingerDownPoint: 第一个手指按下的坐标（用于事件穿透检查）
+   * - mFirstLynxTouchEvent: 第一个触摸事件对象
+   *
+   * @param ev Android MotionEvent对象
+   * @param rootUi 根UI组，用于命中测试
+   * @return true表示事件被消费，false表示事件未被消费（事件穿透）
+   */
   public boolean onTouchEvent(MotionEvent ev, UIGroup rootUi) {
+    // 记录事件时间戳，用于事件排序和时序管理
     mTimestamp = System.currentTimeMillis();
+
+    // ============ 第1步：事件类型分发 ============
+
+    // ACTION_DOWN事件：第一个手指按下，开始新的触摸序列
     if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
-      mIsPlatformGestureActive = false;
+      mIsPlatformGestureActive = false;  // 重置平台手势激活状态
+
+      // 处理第一个手指按下事件
+      // handleFirstTouchDown会执行：命中测试、初始化环境、分发TOUCH_START事件
       if (!handleFirstTouchDown(ev, rootUi)) {
+        // 如果handleFirstTouchDown返回false，表示事件穿透（eventThrough）
+        // 事件不会被Lynx消费，传递给下层View处理
         LLog.i(TAG, "hit event through");
         return false;
       }
-    } else if (ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN) {
+    }
+    // ACTION_POINTER_DOWN事件：其他手指按下（多点触摸）
+    else if (ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN) {
+      // 处理其他手指按下事件
+      // 会更新mActiveUIMap，为新的手指分配目标UI
       handleOtherTouchDown(ev, rootUi);
-    } else {
+    }
+    // 其他事件：移动、抬起、取消
+    else {
+      // 只有在有激活的UI且触摸映射不为空时才处理
+      // 这确保事件序列的完整性（必须有DOWN事件才能处理后续事件）
       if (mActiveUI != null && !mActiveUIMap.isEmpty()) {
+        // 检查事件穿透：如果当前激活的UI允许事件穿透，直接返回false
+        // eventThrough方法检查UI是否配置了enableEventThrough属性
         if (mActiveUI.eventThrough(mFirstFingerDownPoint.getX(), mFirstFingerDownPoint.getY())) {
           LLog.i(TAG, "hit event through");
           return false;
         }
+
+        // 根据事件类型分发到具体的处理方法
         switch (ev.getActionMasked()) {
           case MotionEvent.ACTION_MOVE:
+            // 处理移动事件：更新手指位置，分发TOUCH_MOVE事件
             handleTouchMove(ev);
             break;
           case MotionEvent.ACTION_POINTER_UP:
+            // 处理其他手指抬起事件：从映射中移除，分发TOUCH_END事件
             handleOtherTouchUp(ev);
             break;
           case MotionEvent.ACTION_UP:
+            // 处理第一个手指抬起事件：结束触摸序列
             handleFirstTouchUp(ev);
-            // TODO(hexionghui): Fix the problem: In single-finger mode, only when the last finger
-            // is lifted, :active will be disabled.
+
+            // TODO(hexionghui): 修复问题：在单指模式下，只有当最后一个手指抬起时，:active状态才会被禁用
+            // 更新伪类状态（:active等）
             onActionUpOrCancel(ev);
+
+            // 触发点击事件（click）
             fireClick(ev);
-            // TODO(hexionghui): The tap event should be triggered by the first finger being lifted,
-            // not the last finger being lifted.
+
+            // TODO(hexionghui): tap事件应该由第一个手指抬起触发，而不是最后一个手指
+            // 触发轻触事件（tap）
             fireTap(ev);
+
+            // 重置环境，准备下一个触摸序列
             resetEnv();
             break;
           case MotionEvent.ACTION_CANCEL:
+            // 处理取消事件：分发TOUCH_CANCEL事件，重置环境
             handleTouchCancel(ev);
             break;
           default:
@@ -1053,22 +1253,42 @@ public class TouchEventDispatcher {
       }
     }
 
+    // ============ 第2步：最终的事件穿透检查 ============
+
+    // 再次检查事件穿透，确保在事件处理过程中状态没有变化
+    // 这是防御性编程，防止在事件处理过程中UI状态发生变化
     if (mActiveUI != null
         && mActiveUI.eventThrough(mFirstFingerDownPoint.getX(), mFirstFingerDownPoint.getY())) {
       LLog.i(TAG, "hit event through");
       return false;
     }
 
+    // ============ 第3步：事件分发到UI元素和手势识别器 ============
+
+    // 如果存在激活的UI，将事件分发给UI自身的dispatchTouch方法
+    // 这允许UI元素处理自定义的触摸逻辑
     if (mActiveUI != null) {
       mActiveUI.dispatchTouch(ev);
     }
+
+    // 将事件传递给手势识别器（GestureRecognizer）
+    // mDetector负责识别点击、长按、滑动等手势
+    // 手势识别结果会通过GestureRecognizer.SimpleOnGestureListener回调
     mDetector.onTouchEvent(ev);
 
-    // dispatch touch event to gesture arena
+    // ============ 第4步：手势竞技场事件分发 ============
+
+    // 如果存在手势竞技场管理器，将事件分发给手势竞技场
+    // 手势竞技场用于处理复杂的手势竞争和冲突解决
+    // 例如：ScrollView和ViewPager的滑动冲突
     if (mGestureArenaManager != null) {
       mGestureArenaManager.dispatchTouchEventToArena(ev, mFirstLynxTouchEvent);
     }
 
+    // ============ 第5步：返回事件消费结果 ============
+
+    // 返回true表示事件被Lynx消费，不会传递给其他View
+    // 注意：如果前面返回了false（事件穿透），不会执行到这里
     return true;
   }
 

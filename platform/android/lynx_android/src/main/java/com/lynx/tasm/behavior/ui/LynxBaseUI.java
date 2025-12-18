@@ -3068,86 +3068,162 @@ public abstract class LynxBaseUI
     return false;
   }
 
+  /**
+   * 命中测试的简化接口 - 默认不考虑用户交互状态
+   *
+   * @param x 相对于当前UI的X坐标
+   * @param y 相对于当前UI的Y坐标
+   * @return 命中的事件目标
+   */
   @Override
   public EventTarget hitTest(float x, float y) {
     return hitTest(x, y, false);
   }
 
-  // use ignoreUserInteraction flag to distinguish the usage of hitTest between hit response chain
-  // and devtool getNodeForLocation when call hitTest for getNodeForLocation, if ui.getVisibility()
-  // returns true, then node can be added to response chain when call hitTest for hit response
-  // chain, If set user-interaction-enabled="{{false}}" or visibility: hidden, this ui will not be
-  // on the response chain.
+  /**
+   * LynxBaseUI核心命中测试方法 - 递归查找触摸点下的UI元素
+   *
+   * 方法功能：在UI树中递归查找给定坐标点下的最上层可见且可交互的UI元素
+   * 这是Lynx事件系统的基石，负责将屏幕坐标映射到具体的UI元素
+   *
+   * 设计原则：
+   * 1. 从后向前遍历：优先考虑后添加的UI（符合视图叠加顺序）
+   * 2. Z轴排序：考虑UI的translationZ属性，Z值大的优先
+   * 3. 响应链优先：优先选择在响应链上的UI（isOnResponseChain）
+   * 4. 兄弟节点回退：如果首选目标不响应事件，在兄弟节点中查找
+   *
+   * 命中测试流程：
+   * 1. 遍历所有子UI（从后向前，符合视图叠加顺序）
+   * 2. 过滤不可见、不可交互的UI
+   * 3. 坐标转换：将父UI坐标转换为子UI本地坐标
+   * 4. 检查是否包含点：调用containsPoint方法
+   * 5. 选择最佳目标：响应链优先，其次Z轴值大的
+   * 6. 递归测试：对选中的子UI递归调用hitTest
+   * 7. 兄弟节点回退：如果首选目标不响应，测试其他兄弟节点
+   *
+   * 坐标系统转换：
+   * - 启用事件重构（EnableEventRefactor）：使用getTargetPoint考虑变换矩阵
+   * - 传统方式：手动计算滚动、平移、原点偏移
+   *
+   * 关键过滤条件：
+   * 1. 用户交互启用：!ignoreUserInteraction && ui.isUserInteractionEnabled()
+   * 2. 可见性：ui.getVisibility()
+   * 3. 绘制父视图有效性：检查getDrawParent().getView().getParent() != null
+   * 4. 列表项有效性：检查UIComponent的View是否有父视图
+   *
+   * @param x 相对于当前UI的X坐标
+   * @param y 相对于当前UI的Y坐标
+   * @param ignoreUserInteraction 是否忽略用户交互状态
+   *                              true: 仅用于开发工具获取节点（只需要可见）
+   *                              false: 用于事件响应链（需要可见且可交互）
+   * @return 命中的事件目标，如果没有子UI命中则返回自身
+   */
   @Override
   public EventTarget hitTest(float x, float y, boolean ignoreUserInteraction) {
     Log.d("hxh-debug", "hitTest x: " + x + " y: " + y);
-    float originX = x, originY = y;
-    ArrayList<EventTarget> siblingTargets = new ArrayList<>();
-    LynxBaseUI target = null;
+    float originX = x, originY = y;  // 保存原始坐标，用于兄弟节点回退
+    ArrayList<EventTarget> siblingTargets = new ArrayList<>();  // 存储所有命中的兄弟节点
+    LynxBaseUI target = null;  // 最佳命中目标
 
-    float child_x = x;
-    float child_y = y;
+    float child_x = x;  // 传递给子UI的X坐标
+    float child_y = y;  // 传递给子UI的Y坐标
+
+    // ============ 第1步：遍历子UI，从后向前（符合视图叠加顺序） ============
+    // 后添加的UI在视觉上层，应该优先被命中
     for (int i = mChildren.size() - 1; i >= 0; i--) {
       LynxBaseUI ui = mChildren.get(i);
+
+      // 处理影子代理：UIShadowProxy是UI的代理包装，需要获取实际子UI
       if (ui instanceof UIShadowProxy) {
         ui = ((UIShadowProxy) ui).getChild();
       }
 
-      // when ignoreUserInteraction set false:
-      // only nodes that are visible and userInteraction true will be added to the response chain.
-      //
-      // when ignoreUserInteraction set true:
-      // nodes only need to be visible will be added to the reponse chain
-      // TODO(hexionghui): use shouldHitTest interface.
+      // ============ 第2步：过滤不符合条件的UI ============
+
+      // 检查是否为无效的列表项：UIComponent的View没有父视图
+      // 这种情况可能发生在列表项被回收但尚未重新绑定时
       boolean forbidHitTestForListItem = ui instanceof UIComponent
           && ((UIComponent) ui).getView() != null
           && ((UIComponent) ui).getView().getParent() == null;
+
+      // 过滤条件：
+      // 1. 如果ignoreUserInteraction为false，需要UI启用用户交互
+      // 2. UI必须可见
+      // 3. UI的绘制父视图必须有效（有父视图）
+      // 4. 不是无效的列表项
       if ((!ignoreUserInteraction && !ui.isUserInteractionEnabled()) || !ui.getVisibility()
           || (ui.getDrawParent() != null && ((LynxUI) ui.getDrawParent()).getView() != null
               && ((LynxUI) ui.getDrawParent()).getView().getParent() == null)
           || forbidHitTestForListItem) {
-        continue;
+        continue;  // 跳过这个UI，继续检查下一个
       }
 
-      boolean contain = false;
-      float[] point = new float[] {x, y};
+      // ============ 第3步：坐标转换和包含性检查 ============
+
+      boolean contain = false;  // 点是否在UI范围内
+      float[] point = new float[] {x, y};  // 要检查的坐标点
+
       if (mContext.getEnableEventRefactor()) {
-        // If EnableEventRefactor, transform point from ancestor to descendants, consider the
-        // transform props.
+        // 启用事件重构模式：使用getTargetPoint进行坐标转换
+        // 考虑滚动、UI原点、变换矩阵（旋转、缩放、平移等）
         point = getTargetPoint(point[0], point[1], getScrollX(), getScrollY(),
             ui.getRectWithoutTransform(), ui.getTransformMatrix());
+        // 在子UI的本地坐标系中检查是否包含点
         contain = ui.containsPoint(point[0], point[1], ignoreUserInteraction);
       } else {
+        // 传统模式：直接在当前坐标系检查
+        // 注意：这种方式可能不考虑复杂的变换
         contain = ui.containsPoint(point[0], point[1], ignoreUserInteraction);
       }
 
+      // ============ 第4步：处理命中的UI ============
+
       if (contain) {
+        // 将命中的UI添加到兄弟节点列表，用于后续回退
         siblingTargets.add(ui);
+
+        // 优先选择在响应链上的UI（isOnResponseChain）
+        // 响应链上的UI通常有特殊的事件处理逻辑
         if (ui.isOnResponseChain()) {
-          target = ui;
-          child_x = point[0];
+          target = ui;  // 选择这个UI作为最佳目标
+          child_x = point[0];  // 更新传递给子UI的坐标
           child_y = point[1];
-          break;
+          break;  // 找到响应链上的UI，立即停止遍历
         }
+
+        // 如果没有响应链上的UI，选择Z轴值最大的UI
+        // translationZ值大的UI在视觉上层，应该优先响应事件
         if (target == null || target.getRealTimeTranslationZ() < ui.getRealTimeTranslationZ()) {
-          target = ui;
+          target = ui;  // 选择Z值更大的UI
           child_x = point[0];
           child_y = point[1];
         }
       }
     }
 
+    // ============ 第5步：确定最终命中目标 ============
+
     EventTarget bestHitTarget = null;
+
     if (target == null) {
+      // 没有子UI被命中，当前UI就是最佳目标
       bestHitTarget = this;
     } else {
+      // 对选中的子UI进行递归命中测试
+      // performHitTestOnTarget会处理自定义布局和标准布局的不同情况
       bestHitTarget = performHitTestOnTarget(target, x, y, child_x, child_y, ignoreUserInteraction);
     }
 
+    // ============ 第6步：兄弟节点回退机制 ============
+
+    // 如果最佳目标为空或不响应指针事件（pointerEvents == None）
+    // 需要在其他命中的兄弟节点中查找可响应的目标
     if (bestHitTarget == null || bestHitTarget.pointerEvents() == PointerEventsValue.None) {
       bestHitTarget =
           findHitTargetInSiblings(siblingTargets, target, originX, originY, ignoreUserInteraction);
     }
+
+    // 返回最佳命中目标，如果没有则返回当前UI
     return bestHitTarget != null ? bestHitTarget : this;
   }
 
@@ -3604,6 +3680,7 @@ public abstract class LynxBaseUI
           childLynxPageUI.getLynxContext().getEventEmitter().startEventCapture(eventID);
         }
       } else {
+        // TODO 开始冒泡
         startEventBubble(eventID);
       }
     }

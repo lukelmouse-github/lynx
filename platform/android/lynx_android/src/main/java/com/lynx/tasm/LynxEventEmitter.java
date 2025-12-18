@@ -135,6 +135,8 @@ public class LynxEventEmitter extends EventEmitter {
         if (target.getChildrenLynxPageUI() == null
             || target.getChildrenLynxPageUI().get(String.valueOf(System.identityHashCode(target)))
                 == null) {
+          
+          // TODO 开始捕获??
           target.getRootLynxPageUI().startEventCapture(mEventID);
         }
       } else {

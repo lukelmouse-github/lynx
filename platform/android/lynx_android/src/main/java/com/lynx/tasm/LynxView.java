@@ -1293,17 +1293,43 @@ public class LynxView extends UIBodyView {
   }
 
   /**
-   * If set enableEventThrough in index.json and users touch on LynxRootUI, return false to let
-   * LynxView not consume events. Otherwise, call super.dispatchTouchEvent(ev) to let
-   * onInterceptTouchEvent & onTouchEvent decide whether to consume events. Call
-   * mLynxTemplateRender.onDispatchTouchEvent only when LynxView can consume event to avoid
-   * debugging menu pop up after click.
+   * LynxView事件分发核心方法 - 详细注释版
+   *
+   * 方法功能：处理触摸事件分发，是Lynx事件系统的Android端入口
+   * 设计原则：
+   * 1. 安全性优先：多层检查确保稳定性，异常时回退到原生处理
+   * 2. 性能优化：避免不必要的桥接调用，事件处理主要在Java层完成
+   * 3. 灵活性：支持事件穿透、嵌套滑动、开发工具集成等复杂场景
+   * 4. 可调试性：完善的日志记录和错误报告机制
+   *
+   * 事件分发流程（Java层）：
+   * 1. 前置检查（空检查、原生方法检查、子页面检查）
+   * 2. 状态管理（ACTION_DOWN设置标志，ACTION_UP/CANCEL重置标志）
+   * 3. 核心分发（通过mLynxTemplateRender进入Java事件处理系统）
+   * 4. 事件消费决策（滑动事件特殊处理、开发工具分发）
+   * 5. 异常处理（捕获所有异常并上报）
+   *
+   * Java层事件处理链：
+   * LynxView.dispatchTouchEvent → LynxTemplateRender.dispatchTouchEvent →
+   * LynxUIRenderer.onTouchEvent → TouchEventDispatcher.onTouchEvent
+   *
+   * 关键设计点：
+   * - mCanDispatchTouchEvent标志位：确保触摸事件序列的完整性
+   * - 坐标保护机制：保存和恢复事件坐标，防止事件处理器修改影响后续处理
+   * - 事件拦截控制：通过requestDisallowInterceptTouchEvent控制父View拦截行为
+   * - 滑动事件特殊处理：支持事件穿透和嵌套滑动场景
+   *
+   * @param ev Android MotionEvent对象
+   * @return true表示事件被消费，false表示事件未被消费（继续传递）
    */
-  @Keep
-  @Override
+  @Keep  // 注解：保持方法不被ProGuard混淆
+  @Override  // 注解：重写ViewGroup的dispatchTouchEvent方法
   public boolean dispatchTouchEvent(MotionEvent ev) {
     try {
-      int action = ev.getAction();
+      // ============ 第1步：事件基本信息获取和日志记录 ============
+      int action = ev.getAction();  // 获取事件动作类型
+
+      // 仅对关键事件（按下、抬起、取消）记录详细日志，避免日志过多影响性能
       if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_UP
           || action == MotionEvent.ACTION_CANCEL) {
         LLog.i("Lynx",
@@ -1311,75 +1337,136 @@ public class LynxView extends UIBodyView {
                 + " x: " + ev.getX() + " y: " + ev.getY());
       }
 
+      // ============ 第2步：前置检查 - 确保进入Lynx事件系统的条件 ============
+
+      // 检查1：模板渲染器是否为空（Lynx引擎未初始化）
+      // 如果为空，直接回退到原生Android事件处理
       if (mLynxTemplateRender == null) {
         return super.dispatchTouchEvent(ev);
       }
 
+      // 检查2：UI渲染器是否要求调用原生View方法
+      // 某些特殊场景下（如Native组件混合），需要让原生View处理事件
       ILynxUIRenderer lynxUIRenderer = lynxUIRenderer();
       if ((lynxUIRenderer != null) && lynxUIRenderer.shouldInvokeNativeViewMethod()) {
         return super.dispatchTouchEvent(ev);
       }
 
+      // 检查3：是否是子LynxPageUI
+      // 子页面可能有独立的事件处理逻辑，需要特殊处理
       if (isChildLynxPageUI()) {
         return super.dispatchTouchEvent(ev);
       }
 
+      // ============ 第3步：事件序列状态管理 ============
+
+      // ACTION_DOWN事件：开始一个新的触摸序列
       if (action == MotionEvent.ACTION_DOWN) {
+        // 如果启用了触摸高亮功能，在开发工具控制台显示触摸信息（用于调试）
         if (LynxEnv.inst().isHighlightTouchEnabled()) {
           showMessageOnConsole(TAG + ": dispatch touch for lynx " + hashCode()
                   + ", touch: " + action + " x: " + ev.getX() + " y: " + ev.getY(),
               LogBoxLogLevel.Info.ordinal());
         }
+        // 设置标志位，允许后续事件分发给Lynx引擎
+        // 这个标志位确保只有在一个完整的触摸序列中才会分发事件给C++层
         mCanDispatchTouchEvent = true;
       }
 
-      boolean consumed = false;
+      // ============ 第4步：核心事件分发（Java层） ============
+
+      boolean consumed = false;  // 事件消费标志，初始化为false
+
+      // 只有当前允许分发事件时（mCanDispatchTouchEvent为true），才进入Lynx事件系统
       if (mCanDispatchTouchEvent) {
-        // Dispatch event to sub ui
+        // 坐标保护机制：保存事件原始坐标
+        // 因为事件处理器可能会修改事件坐标，需要保存并恢复
         float originX = ev.getX(), originY = ev.getY();
+
+        // 核心调用：将事件分发给模板渲染器（Java层）
+        // LynxTemplateRender是Java层的模板渲染管理器，负责协调事件处理流程
+        // 实际事件处理流程：LynxTemplateRender → LynxUIRenderer → TouchEventDispatcher
+        // TouchEventDispatcher是Java层的事件分发器，处理触摸事件的分发和手势识别
+        // 返回值表示事件是否被Lynx UI消费
         consumed = mLynxTemplateRender.dispatchTouchEvent(ev);
+
+        // 恢复事件原始坐标，确保后续处理使用正确的坐标
         ev.setLocation(originX, originY);
-        // If consumed && mLynxTemplateRender.blockNativeEvent(ev), call
-        // getParent().requestDisallowInterceptTouchEvent(true) to consume event;
+
+        // 事件拦截控制：如果事件被消费且需要阻止原生事件
+        // 调用父View的requestDisallowInterceptTouchEvent(true)方法
+        // 这告诉父View不要拦截后续的触摸事件，让LynxView完全消费整个事件序列
+        // 常用于滑动冲突处理场景
         if (consumed && mLynxTemplateRender.blockNativeEvent(ev) && getParent() != null) {
           getParent().requestDisallowInterceptTouchEvent(true);
         }
       }
+
+      // ============ 第5步：事件序列结束处理 ============
+
+      // ACTION_UP或ACTION_CANCEL事件：结束当前触摸序列
       if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+        // 如果启用了触摸高亮功能，记录结束日志
         if (LynxEnv.inst().isHighlightTouchEnabled()) {
           showMessageOnConsole(TAG + ": dispatch touch for lynx " + hashCode()
                   + ", touch: " + action + " x: " + ev.getX() + " y: " + ev.getY(),
               LogBoxLogLevel.Info.ordinal());
         }
+        // 重置标志位，结束当前触摸序列
+        // 后续的触摸事件（如果有）将不会分发给Lynx事件系统，直到下一个ACTION_DOWN
         mCanDispatchTouchEvent = false;
       }
 
-      // If consumed, let ViewGroup call onTouchEvent. Otherwise, return false.
+      // ============ 第6步：事件消费决策 ============
+
+      // 如果事件被Lynx UI消费，需要决定后续处理逻辑
       if (consumed) {
+        // 开发工具集成：如果启用了开发工具事件分发
+        // 将事件分发给开发工具，用于调试、性能分析、事件回放等功能
+        // 注意：只在LynxView可以消费事件时才分发，避免调试菜单误弹出
         if (mDispatchTouchEventToDev) {
-          // Dispatch event to devtool only when LynxView can consume event to avoid
-          // debugging menu pop up after click.
           mLynxTemplateRender.onDispatchInputEvent(ev);
         }
-        // If not consumeSlideEvent, call super.dispatchTouchEvent let other view consume the
-        // events. Otherwise, return true such that only LynxView can consume the events, which
-        // means only the consume-slide-event ui can respond the slide events.
+
+        // 滑动事件特殊处理逻辑：
+        // - 如果consumeSlideEvent返回true：LynxView完全消费事件，返回true
+        // - 如果consumeSlideEvent返回false：调用父类方法，让其他View有机会消费
+        // 设计目的：支持事件穿透和嵌套滑动场景
+        // 例如：Lynx内部的ScrollView和外部的Native ScrollView嵌套时
         if (mLynxTemplateRender.consumeSlideEvent(ev)) {
-          return true;
+          return true;  // LynxView完全消费事件，事件传递终止
         } else {
-          return super.dispatchTouchEvent(ev);
+          return super.dispatchTouchEvent(ev);  // 让父类ViewGroup处理，事件可能继续传递
         }
       }
+
+      // ============ 第7步：事件未被消费的处理 ============
+      // 如果事件未被Lynx UI消费，返回false，让事件继续向下传递或由其他View处理
+      // 注意：这里不会立即返回，而是执行到方法最后的return false
+
     } catch (Throwable e) {
+      // ============ 第8步：异常处理 ============
+      // 捕获所有异常（包括Error和Exception），确保事件分发不会崩溃
+
+      // 如果模板渲染器存在，创建详细的错误报告
       if (mLynxTemplateRender != null) {
         LynxError error = new LynxError(LynxSubErrorCode.E_EVENT_EXCEPTION,
             "An exception occurred during dispatchTouchEvent(): " + e.getMessage(),
             "This error is caught by native, please ask Lynx for help", LynxError.LEVEL_ERROR);
-        error.setCallStack(CallStackUtil.getStackTraceStringTrimmed(e));
-        mLynxTemplateRender.onErrorOccurred(error);
+        error.setCallStack(CallStackUtil.getStackTraceStringTrimmed(e));  // 添加调用栈
+        mLynxTemplateRender.onErrorOccurred(error);  // 上报错误到Lynx错误系统
       }
+
+      // 异常情况下，返回false让事件继续传递，避免阻塞整个事件系统
+      // 注意：这里不会重新抛出异常，确保系统稳定性
     }
-    return false;
+
+    // ============ 第9步：默认返回值 ============
+    // 以下情况会执行到这里：
+    // 1. 事件未被Lynx UI消费（consumed == false）
+    // 2. 发生异常且已处理
+    // 3. 前置检查失败但未立即返回
+    return false;  // 事件未被消费，继续传递
   }
 
   /**
